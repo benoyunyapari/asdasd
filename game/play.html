@@ -9974,6 +9974,30 @@ const player = {
   hitFlash: 0,
   kills: 0, totalDmg: 0, score: 0
 };
+window._getWorldBossPlayer = () => player;
+window._getWorldBossSocket = () => _socket;
+window._getWorldBossTelegraphs = () => bossTelegraphs;
+window._worldBossClient = {
+  getPlayer: () => player,
+  getSocket: () => _socket,
+  getTelegraphs: () => bossTelegraphs,
+  getOtherPlayer: id => _otherPlayers.get(id),
+  addFloatingText: text => { if (floatingTexts.length < 32) floatingTexts.push(text); },
+  spawnBlood: (...args) => spawnBlood(...args),
+  updateHpBar: () => updateHpBar(),
+  shake: amount => shake(amount),
+  triggerDmgFlash: () => triggerDmgFlash(),
+  playSound: (...args) => playSound(...args),
+  getAge: () => getAge(player.gold || 0),
+  isDying: () => _isDying,
+  isSpawnProtected: () => _spawnProtected,
+  isMobile: () => _isMobile,
+  die: () => die(),
+  resolveBossCollision: (entity, radius) => {
+    entity.bossR = radius;
+    resolveEntitySolidCollision(entity, true);
+  }
+};
 if (_initialWeapon === 2) {
   setTimeout(() => {
     document.getElementById('slot-1')?.classList.remove('active');
@@ -12205,9 +12229,11 @@ function checkHits() {
   }
 
   // ---- Boss camps — silah swing'leri bosslara da hasar verir ----
-  if (typeof CAMPS !== 'undefined' && typeof bossState !== 'undefined') {
-    CAMPS.forEach(function(c) {
-      const bs = bossState[c.id];
+  const _bossCamps = window.CAMPS;
+  const _bossStates = window.bossState;
+  if (Array.isArray(_bossCamps) && _bossStates) {
+    _bossCamps.forEach(function(c) {
+      const bs = _bossStates[c.id];
       if (!bs || !bs.alive) return;
       const _bdx = bs.x - player.x, _bdy = bs.y - player.y;
       const _bMaxR = hitRange + c.bossR + player.radius;
@@ -12231,7 +12257,7 @@ function checkHits() {
       spawnBlood(bs.x, bs.y, _isBossCrit ? 8 : 4);
       if (floatingTexts.length < 20) floatingTexts.push({x:bs.x+(Math.random()-0.5)*30,y:bs.y-c.bossR-20,text:(_isBossCrit?'💥 KRİT! -':'-')+_bossDmg,alpha:1,life:_isBossCrit?60:38,color:_isBossCrit?'#ffdd00':'#ffaa44',big:_isBossCrit});
       if (player._lifeSteal && !_isDying) { player.hp = Math.min(player.maxHp, player.hp + 4); updateHpBar(); }
-      if (bs.hp <= 0 && typeof _bossDied === 'function') _bossDied(c, bs);
+      if (bs.hp <= 0 && typeof window._defeatLocalWorldBoss === 'function') window._defeatLocalWorldBoss(c.id);
     });
   }
 
@@ -14217,8 +14243,8 @@ function respawn() {
   _pendingUpgrades.length = 0; // clear stale upgrade queue from previous life
   if (typeof bossTelegraphs !== 'undefined') bossTelegraphs.length = 0; // clear stale boss telegraphs on respawn
   // Reset any casting boss skills so they don't re-fire after respawn
-  if (typeof bossState !== 'undefined' && typeof CAMPS !== 'undefined') {
-    CAMPS.forEach(function(c){ if(bossState[c.id]) bossState[c.id].castingSkill=null; });
+  if (window.bossState && Array.isArray(window.CAMPS)) {
+    window.CAMPS.forEach(function(c){ if(window.bossState[c.id]) window.bossState[c.id].castingSkill=null; });
   }
   document.getElementById('upgrade-overlay').classList.remove('show');
   document.getElementById('upg-backdrop').classList.remove('show');
@@ -15911,13 +15937,19 @@ const _mobWebCooldowns = new Map();
 const _forestMobAttackVfx = [];
 const _forestMobVfxAtlas = new Image();
 _forestMobVfxAtlas.src = '/game/mobassets/forest-mob-vfx.webp';
+// Per-frame alpha crops measured in atlas pixels keep slash and spike impacts centered.
 const _forestMobAttackVfxRows = {
   wild_boar: 0,
   forest_hornet: 2,
   grizzly_bear: 0,
   elder_wendigo: 1,
-  treant_boss: 1
+  treant_boss: 2
 };
+const _FOREST_MOB_VFX_FRAME_BOUNDS = [
+  [[131,28,106,200],[144,0,112,256],[0,0,256,256],[0,0,152,256],[22,0,215,256],[85,0,171,256],[0,0,256,256],[0,0,256,256]],
+  [[26,8,204,240],[38,0,218,241],[0,0,256,248],[0,0,256,256],[0,0,256,256],[0,0,256,256],[0,0,256,256],[0,0,256,256]],
+  [[93,6,70,182],[93,6,70,182],[93,6,70,182],[93,6,70,182],[93,0,163,188],[0,0,256,188],[0,0,256,188],[0,0,256,188]]
+];
 
 function spawnMobAttackEffect(type, x, y, angle, targetX, targetY, radius) {
   const ang = angle !== undefined ? angle : (targetX !== undefined && targetY !== undefined ? Math.atan2(targetY - y, targetX - x) : 0);
@@ -15983,7 +16015,13 @@ function updateAndDrawMobAttackEffects(ctx) {
       ctx.globalAlpha = Math.min(1, fx.life / 5);
       ctx.translate(fx.x, fx.y);
       ctx.rotate(fx.angle);
-      ctx.drawImage(_forestMobVfxAtlas, frame * 256, fx.row * 256, 256, 256, -fx.size / 2, -fx.size / 2, fx.size, fx.size);
+      const [sourceX, sourceY, sourceWidth, sourceHeight] = _FOREST_MOB_VFX_FRAME_BOUNDS[fx.row][frame];
+      const frameScale = fx.size / Math.max(sourceWidth, sourceHeight);
+      const drawWidth = sourceWidth * frameScale;
+      const drawHeight = sourceHeight * frameScale;
+      ctx.drawImage(_forestMobVfxAtlas,
+        frame * 256 + sourceX, fx.row * 256 + sourceY, sourceWidth, sourceHeight,
+        -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
       ctx.restore();
     }
     if (fx.life <= 0) _forestMobAttackVfx.splice(i, 1);
@@ -18041,12 +18079,13 @@ function _drawObsidianGolem(ctx, e, R, isMoving, state, animTimer, attackTimer, 
 }
 
 // ── Main enemy draw entry point ───────────────────────────────
+// Bounds trim transparent atlas padding while keeping each animation row at a stable scale.
 const _FOREST_MOB_ATLAS_CONFIG = {
-  wild_boar: { file: 'wild-boar.webp', scale: 6.4 },
-  forest_hornet: { file: 'forest-hornet.webp', scale: 6.4 },
-  grizzly_bear: { file: 'grizzly-bear.webp', scale: 6.4 },
-  elder_wendigo: { file: 'elder-wendigo.webp', scale: 6.4 },
-  treant_boss: { file: 'treant-boss.webp', scale: 6.4 }
+  wild_boar: { file: 'wild-boar.webp', bounds: [[134,175,148,114],[134,171,148,122],[134,171,148,122]] },
+  forest_hornet: { file: 'forest-hornet.webp', bounds: [[77,140,199,176],[77,140,199,180],[29,144,297,179]] },
+  grizzly_bear: { file: 'grizzly-bear.webp', bounds: [[129,159,142,146],[129,153,142,158],[105,153,185,158]] },
+  elder_wendigo: { file: 'elder-wendigo.webp', bounds: [[149,130,130,204],[147,120,141,224],[137,122,144,220]] },
+  treant_boss: { file: 'treant-boss.webp', bounds: [[143,161,164,142],[140,143,167,178],[127,109,180,246]] }
 };
 const _FOREST_MOB_ATLASES = Object.create(null);
 for (const [shape, config] of Object.entries(_FOREST_MOB_ATLAS_CONFIG)) {
@@ -18063,8 +18102,14 @@ function _drawForestMobAtlas(ctx, e, radius, isMoving, flash) {
   const frame = attacking
     ? Math.min(frameCount - 1, Math.floor(Math.max(0, e.attackTimer || 0) / 55 * frameCount))
     : Math.floor(Date.now() / (isMoving ? 95 : 150)) % frameCount;
-  const size = radius * _FOREST_MOB_ATLAS_CONFIG[e.shape].scale;
-  ctx.drawImage(image, frame * 384, row * 384, 384, 384, -size / 2, -size / 2, size, size);
+  const [boundX, boundY, boundWidth, boundHeight] = _FOREST_MOB_ATLAS_CONFIG[e.shape].bounds[row];
+  const visibleSize = radius * 3.2;
+  const sizeScale = visibleSize / Math.max(boundWidth, boundHeight);
+  const drawWidth = boundWidth * sizeScale;
+  const drawHeight = boundHeight * sizeScale;
+  ctx.drawImage(image,
+    frame * 384 + boundX, row * 384 + boundY, boundWidth, boundHeight,
+    -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
   if (flash) {
     ctx.fillStyle = 'rgba(255, 180, 120, 0.42)';
     ctx.beginPath();
@@ -20388,10 +20433,12 @@ function update(timestamp = 0) {
           }
         }
         // Check camp bosses
-        if (typeof CAMPS !== 'undefined' && typeof bossState !== 'undefined') {
-          for (let _ci = 0; _ci < CAMPS.length; _ci++) {
-            const _cp = CAMPS[_ci];
-            const _bs = bossState[_cp.id];
+        const _bossCamps = window.CAMPS;
+        const _bossStates = window.bossState;
+        if (Array.isArray(_bossCamps) && _bossStates) {
+          for (let _ci = 0; _ci < _bossCamps.length; _ci++) {
+            const _cp = _bossCamps[_ci];
+            const _bs = _bossStates[_cp.id];
             if (!_bs || !_bs.alive || _bs.hp <= 0) continue;
             const _bdx = _bs.x - b.x, _bdy = _bs.y - b.y;
             const _bd2 = _bdx * _bdx + _bdy * _bdy;
@@ -20520,21 +20567,27 @@ function update(timestamp = 0) {
       }
     }
     // Check boss hit
-    if (!hit && typeof CAMPS !== 'undefined' && typeof bossState !== 'undefined') {
-      for (let _bci = 0; _bci < CAMPS.length; _bci++) {
-        const _cp = CAMPS[_bci];
-        const _bs = bossState[_cp.id];
+    const _bossCamps = window.CAMPS;
+    const _bossStates = window.bossState;
+    if (!hit && Array.isArray(_bossCamps) && _bossStates) {
+      for (let _bci = 0; _bci < _bossCamps.length; _bci++) {
+        const _cp = _bossCamps[_bci];
+        const _bs = _bossStates[_cp.id];
         if (!_bs || !_bs.alive || _bs.hp <= 0) continue;
         const _bdx = p.x - _bs.x, _bdy = p.y - _bs.y;
         const _bHitR = (_cp.bossR || 50) + 16;
         if (_bdx * _bdx + _bdy * _bdy < _bHitR * _bHitR) {
-          _bs.hp = Math.max(0, _bs.hp - p.dmg);
-          _bs.dmgFlashFrames = 6;
-          spawnBlood(_bs.x, _bs.y, 6);
-          floatingTexts.push({ x: _bs.x, y: _bs.y - 45, text: '-' + p.dmg + ' ğŸ”«', alpha: 1, life: 35, color: '#00e5ff', big: true });
-          playSound(280, 0.08, 'sine', 0.22);
-          if (_bs.hp <= 0 && typeof _bossDied === 'function') {
-            _bossDied(_cp, _bs);
+          if (_connected && _socket && p.buildingId) {
+            _socket.emit('world_boss_turret_hit_req', { bossId: _cp.id, buildingId: p.buildingId });
+          } else {
+            _bs.hp = Math.max(0, _bs.hp - p.dmg);
+            _bs.dmgFlashFrames = 6;
+            spawnBlood(_bs.x, _bs.y, 6);
+            floatingTexts.push({ x: _bs.x, y: _bs.y - 45, text: '-' + p.dmg + ' HP', alpha: 1, life: 35, color: '#00e5ff', big: true });
+            playSound(280, 0.08, 'sine', 0.22);
+            if (_bs.hp <= 0 && typeof window._defeatLocalWorldBoss === 'function') {
+              window._defeatLocalWorldBoss(_cp.id);
+            }
           }
           hit = true;
           break;
@@ -21497,7 +21550,7 @@ function update(timestamp = 0) {
   // NOTE: cave hook is called AFTER background so cave portals are not covered
   // BUG FIX: removed globalTime % 2 === 0 throttle — it caused caves AND bosses (drawn via the
   // same hook chain) to flicker at 30Hz (skipped every odd frame).
-  if (_qualityLevel >= 1 && typeof window._drawCavesHook === 'function') window._drawCavesHook(ctx);
+  if (typeof window._drawCavesHook === 'function') window._drawCavesHook(ctx, player);
 
   // === BOSS ATTACK TELEGRAPHS — drawn above ground, below entities ===========
   let _tgSaveDepth = 0;
@@ -21854,13 +21907,11 @@ function update(timestamp = 0) {
   }
   } catch(_mobRenderErr) {}
 
-  // Mob special attack effects (Spider webs, bear claws, poison, etc.)
-  try {
-    updateAndDrawMobAttackEffects(ctx);
-  } catch(_mobEffErr) {}
-
   // Ambient biome particles (behind everything)
   drawAmbientParticles();
+  if (typeof window._drawWorldBossBodies === 'function') {
+    window._drawWorldBossBodies(ctx, player, _renderCullL, _renderCullR, _renderCullT, _renderCullB);
+  }
   // Layer 5b: projectiles — single save/restore wrapping the whole batch (was one per projectile)
   if (projectiles.length > 0) {
     ctx.save();
@@ -22028,9 +22079,6 @@ function update(timestamp = 0) {
   drawEnemyProjectiles();
   drawArmorDrops();
   drawLevelUpRings();
-  // Layer 6c: hit particles (in world space)
-  drawParticles();
-
   // Layer 7: player + spawn shield + local chat bubble
   _drawDashFx();
   if (_playerMoveTrail.length > 1 && playerAcc && playerAcc.izler && playerAcc.izler !== 'iz_none') {
@@ -22039,6 +22087,23 @@ function update(timestamp = 0) {
   if (!_isDying) drawPlayer();
   drawSpawnShield();
   _drawLocalChatBubble();
+
+  // Draw combat effects after actors so sprites and impact flashes remain visible.
+  try {
+    drawParticles();
+  } catch(_particleEffErr) {
+    console.error('[Particles] Parçacık çizimi başarısız:', _particleEffErr);
+  }
+  try {
+    updateAndDrawMobAttackEffects(ctx);
+  } catch(_mobEffErr) {
+    console.error('[MobVFX] Efekt çizimi başarısız:', _mobEffErr);
+  }
+  try {
+    if (typeof window._drawWorldBossEffects === 'function') window._drawWorldBossEffects(ctx);
+  } catch(_bossEffErr) {
+    console.error('[BossVFX] Efekt çizimi başarısız:', _bossEffErr);
+  }
 
   // ── Train/rail layer disabled for cleaner Sploop.io feel ─────────────────
 
@@ -22693,6 +22758,7 @@ function initMultiplayer() {
     forceNew: false,
   });
   window._socket = _socket;
+  window.dispatchEvent(new CustomEvent('worldboss-socket-ready', { detail: _socket }));
   const _connectionFallbackTimer = setTimeout(() => {
     if (!_socket.connected && !_connected) {
       initMultiplayerOfflineFallback();
@@ -27499,8 +27565,8 @@ var _caveVisited=parseInt(localStorage.getItem('fb_caves_visited')||'0',10);
 // PERF: Pre-built cave glow image — replaces createRadialGradient() every frame per cave.
 // Caves never move, so one shared 180×180 bitmap suffices for all cave glow blits.
 var _caveGrdCache = null;
-window._drawCavesHook=function(ctx){
-  if(typeof player==='undefined'||!player)return;
+window._drawCavesHook=function(ctx,currentPlayer){
+  if(!currentPlayer)return;
   var t=typeof globalTime!=='undefined'?globalTime:0;
   _caveNearIdx=-1;
   // Build shared glow bitmap once — zero cost on subsequent frames
@@ -27518,7 +27584,7 @@ window._drawCavesHook=function(ctx){
     }catch(e){_caveGrdCache=false;} // fallback flag so we don't retry every frame
   }
   CAVES.forEach(function(cv,idx){
-    var dx=cv.x-player.x,dy=cv.y-player.y;
+    var dx=cv.x-currentPlayer.x,dy=cv.y-currentPlayer.y;
     var dist2=dx*dx+dy*dy;
     // PERF: Skip caves beyond 1800px — well outside any viewport at all zoom levels
     if(dist2>1800*1800)return;
@@ -27921,7 +27987,7 @@ function _redrawMmOverlay(){
   _mmOvCtx.clearRect(0,0,S,S);
 
   _MM_BOSSES_EXT.forEach(function(def){
-    var boss=typeof bossState!=='undefined'?bossState[def.id]:null;
+    var boss=window.bossState?window.bossState[def.id]:null;
     if(!boss||boss.alive===false||!Number.isFinite(Number(boss.x))||!Number.isFinite(Number(boss.y)))return;
     var p=_mmpx(Number(boss.x),Number(boss.y));
     p[0]=Math.max(12,Math.min(S-12,p[0]));
@@ -28139,6 +28205,7 @@ var CAMPS = [
     bx: 5200, by: 0, terR: 1500, bossR: 112, bossMaxHp: 18000,
     bossDmg: 38, bossSpd: 1.75, col: '#8a4d19', out: '#321707', eyeCol: '#d7ff45',
     sprite: 'scorpios', frames: [8, 12, 16],
+    spriteBounds: [[66,66,124,181],[60,64,136,186],[66,49,124,207]],
     skills: [{
       id: 'void-burn', name: 'Void Yanığı', skillType: 'circle', radius: 210,
       dmgMult: 2.2, cooldown: 8500, telegraphDur: 1300, color: '#b84aff',
@@ -28150,6 +28217,7 @@ var CAMPS = [
     bx: 0, by: -5200, terR: 1650, bossR: 132, bossMaxHp: 26000,
     bossDmg: 52, bossSpd: 1.3, col: '#754326', out: '#27160e', eyeCol: '#fff0b5',
     sprite: 'goliath', frames: [8, 12, 16],
+    spriteBounds: [[60,64,136,104],[51,64,154,106],[48,58,184,117]],
     skills: [{
       id: 'rock-spike', name: 'Kaya Dikenleri', skillType: 'line', length: 440,
       radius: 88, dmgMult: 2.4, knockback: 18, cooldown: 9500,
@@ -28190,8 +28258,11 @@ CAMPS.forEach(function(c) {
 // ── AI LOOP (50 ms) ──────────────────────────────────────────
 setInterval(function(){
   try{
-    if(typeof player==='undefined'||!player)return;
-    if(_connected || _worldBossesShared) return;
+    var client=window._worldBossClient;
+    var player=client&&client.getPlayer();
+    if(!player)return;
+    var socket=client.getSocket();
+    if((socket&&socket.connected)||_worldBossesShared)return;
     var now=Date.now();
     var deathShown=document.getElementById('death-overlay')&&
                    document.getElementById('death-overlay').classList.contains('show');
@@ -28213,30 +28284,32 @@ setInterval(function(){
       bs.aggroed=(pDist<c.terR*0.85&&hDist<c.terR);
       var dt=0.05;
       if(bs.aggroed){
+        bs.state='walk';
         // Chase
         var nx=pDist?pdx/pDist:1,ny=pDist?pdy/pDist:0;
         var nx2=bs.x+nx*c.bossSpd*dt*60;
         var ny2=bs.y+ny*c.bossSpd*dt*60;
         var nd=Math.sqrt((nx2-c.bx)*(nx2-c.bx)+(ny2-c.by)*(ny2-c.by));
                 if(nd<c.terR*0.96){bs.x=nx2;bs.y=ny2;}
-        resolveEntitySolidCollision(bs, true);
+        client.resolveBossCollision(bs,c.bossR);
         bs.angle=Math.atan2(pdy,pdx);
         // ── Normal saldırı (melee) ───────────────────────────────────────────
         var atkR=c.bossR+(player.radius||22)+15;
         if(pDist<atkR&&!deathShown&&now-bs.lastPlayerDmg>750){
+          bs.state='attack';
+          bs.attackUntil=now+520;
           bs.lastPlayerDmg=now;
           var rawBossDmg=c.bossDmg;
           // Minimum 1 hasar garantisi — zırh ne kadar yüksek olursa olsun
           var actualBossDmg=Math.max(1,Math.round(rawBossDmg*(1-(player.armorBonus||0))));
           player.hp=Math.max(0,player.hp-actualBossDmg);
-          if(typeof updateHpBar==='function')updateHpBar();
-          if(typeof shake==='function')shake(14);
-          if(typeof spawnBlood==='function')spawnBlood(player.x,player.y,8);
-          if(typeof triggerDmgFlash==='function')triggerDmgFlash();
-          if(typeof floatingTexts!=='undefined'&&floatingTexts.length<16)
-            floatingTexts.push({x:player.x+(Math.random()-0.5)*30,y:player.y-55,text:'-'+actualBossDmg+' 👑',alpha:1,life:45,color:'#ff4444'});
-          if(typeof playSound==='function')playSound(80+Math.floor(Math.random()*30),0.18,'sawtooth',0.28);
-          if(player.hp<=0&&typeof die==='function'&&typeof _isDying!=='undefined'&&!_isDying)die();
+          client.updateHpBar();
+          client.shake(14);
+          client.spawnBlood(player.x,player.y,8);
+          client.triggerDmgFlash();
+          client.addFloatingText({x:player.x+(Math.random()-0.5)*30,y:player.y-55,text:'-'+actualBossDmg+' 👑',alpha:1,life:45,color:'#ff4444'});
+          client.playSound(80+Math.floor(Math.random()*30),0.18,'sawtooth',0.28);
+          if(player.hp<=0&&!client.isDying())client.die();
         }
         // ── Skill sistemi ────────────────────────────────────────────────────
         if(c.skills&&c.skills.length&&!bs.castingSkill&&!deathShown){
@@ -28253,12 +28326,14 @@ setInterval(function(){
             // Skill cast et
             bs.skillCooldowns[_sk.id]=now;
             bs.castingSkill={skill:_sk,telegraphEnd:now+_sk.telegraphDur,applied:false};
+            bs.state='attack';
             // Telegraph ekle
             var _tg={x:bs.x,y:bs.y,startTime:now,dur:_sk.telegraphDur,color:_sk.color,skillType:_sk.skillType,skillName:_sk.name,bossType:c.bossType};
             if(_sk.skillType==='circle') _tg.radius=_sk.radius;
             else if(_sk.skillType==='cone'){_tg.radius=_sk.radius;_tg.arc=_sk.arc||50;_tg.angle=bs.angle;}
             else if(_sk.skillType==='line'){_tg.length=_sk.length||350;_tg.radius=_sk.radius||55;_tg.angle=bs.angle;}
-            if(typeof bossTelegraphs!=='undefined' && bossTelegraphs.length < (_isMobile ? 3 : 6)) bossTelegraphs.push(_tg);
+            var telegraphs=client.getTelegraphs();
+            if(telegraphs.length<(client.isMobile()?3:6))telegraphs.push(_tg);
             break;
           }
         }
@@ -28280,21 +28355,20 @@ setInterval(function(){
             var _lly=_lsin*_pdx3+_lcos*_pdy3;
             _hit=_llx>0&&_llx<(_csk.length||350)&&Math.abs(_lly)<(_csk.radius||55)+(player.radius||22);
           }
-          if(_hit&&!deathShown&&!(typeof _spawnProtected!=='undefined'&&_spawnProtected)){
+          if(_hit&&!deathShown&&!client.isSpawnProtected()){
             player.hp=Math.max(0,player.hp-_csdmg);
-            if(typeof updateHpBar==='function')updateHpBar();
-            if(typeof shake==='function')shake(24);
-            if(typeof spawnBlood==='function')spawnBlood(player.x,player.y,14);
-            if(typeof triggerDmgFlash==='function')triggerDmgFlash();
-            if(typeof floatingTexts!=='undefined'&&floatingTexts.length<16)
-              floatingTexts.push({x:player.x+(Math.random()-0.5)*45,y:player.y-68,text:'💥 -'+_csdmg+' BOSS!',alpha:1,life:65,color:'#ff0000',big:true});
+            client.updateHpBar();
+            client.shake(24);
+            client.spawnBlood(player.x,player.y,14);
+            client.triggerDmgFlash();
+            client.addFloatingText({x:player.x+(Math.random()-0.5)*45,y:player.y-68,text:'💥 -'+_csdmg+' BOSS!',alpha:1,life:65,color:'#ff0000',big:true});
             if(_csk.knockback&&_pd3>0){
               var _kb=_csk.knockback;
               player.momX+=(_pdx3/_pd3)*_kb;
               player.momY+=(_pdy3/_pd3)*_kb;
             }
-            if(typeof playSound==='function')playSound(50+Math.random()*25,0.26,'sawtooth',0.42);
-            if(player.hp<=0&&typeof die==='function'&&typeof _isDying!=='undefined'&&!_isDying)die();
+            client.playSound(50+Math.random()*25,0.26,'sawtooth',0.42);
+            if(player.hp<=0&&!client.isDying())client.die();
             bs.lastPlayerDmg=now; // normal saldırı cooldown'unu sıfırla
           }
           if(_csk.effect&&_worldBossEffects.length<12){
@@ -28309,6 +28383,7 @@ setInterval(function(){
           (function(bsr){setTimeout(function(){bsr.castingSkill=null;},600);})(bs);
         }
       } else if(hDist>25){
+        bs.state='walk';
         // ── Eve dön — çok yavaş HP iyileşmesi (sadece yuva yakınında) ────────
         var hdx=c.bx-bs.x,hdy=c.by-bs.y,hd=Math.sqrt(hdx*hdx+hdy*hdy);
         bs.x+=hdx/hd*c.bossSpd*1.6*dt*60;
@@ -28316,6 +28391,7 @@ setInterval(function(){
         // HP yalnızca yuva bölgesine yaklaşınca yavaşça iyileşir
         if(hDist<c.terR*0.3) bs.hp=Math.min(c.bossMaxHp,bs.hp+c.bossMaxHp*0.0008);
       } else {
+        bs.state='idle';
         // Patrol
         bs.patrolA+=0.007;
         bs.x=c.bx+Math.cos(bs.patrolA)*35;
@@ -28324,7 +28400,7 @@ setInterval(function(){
       }
       // Player attacks boss (proximity auto-attack)
       if(bs.aggroed&&pDist<c.bossR+55){
-        var plvl=typeof getAge==='function'?getAge(player.gold||0):1;
+        var plvl=client.getAge();
         var pdmg=(5+plvl*1.5)*dt*6;
         bs.hp-=pdmg;
         bs.dmgFlashFrames=4;
@@ -28377,21 +28453,26 @@ function _bossDied(c,bs){
   if(typeof window._showAchPopup==='function')
     window._showAchPopup('💀',c.bossName+' Yenildi!','2 dakika içinde geri dönecek. +60🏆 kazandın!');
 }
+window._defeatLocalWorldBoss=function(id){
+  var camp=CAMPS.find(function(entry){return entry.id===id;});
+  var boss=bossState[id];
+  if(camp&&boss&&boss.alive)_bossDied(camp,boss);
+};
 
 // ── CANVAS HOOK ZINCIRI ───────────────────────────────────────
 var _prevCaveHook=window._drawCavesHook;
-window._drawCavesHook=function(ctx){
-  if(_prevCaveHook)_prevCaveHook(ctx);
-  if(CAMPS.length)_drawCamps(ctx);
+window._drawCavesHook=function(ctx,currentPlayer){
+  if(_prevCaveHook)_prevCaveHook(ctx,currentPlayer);
+  if(CAMPS.length)_drawCamps(ctx,currentPlayer);
 };
 
-function _drawCamps(ctx){
-  if(typeof player==='undefined'||!player)return;
+function _drawCamps(ctx,currentPlayer){
+  if(!currentPlayer)return;
   var t=typeof globalTime!=='undefined'?globalTime:0;
-  var _sL = typeof _renderCullL !== 'undefined' ? _renderCullL : (player.x - 1400);
-  var _sR = typeof _renderCullR !== 'undefined' ? _renderCullR : (player.x + 1400);
-  var _sT = typeof _renderCullT !== 'undefined' ? _renderCullT : (player.y - 1000);
-  var _sB = typeof _renderCullB !== 'undefined' ? _renderCullB : (player.y + 1000);
+  var _sL = typeof _renderCullL !== 'undefined' ? _renderCullL : (currentPlayer.x - 1400);
+  var _sR = typeof _renderCullR !== 'undefined' ? _renderCullR : (currentPlayer.x + 1400);
+  var _sT = typeof _renderCullT !== 'undefined' ? _renderCullT : (currentPlayer.y - 1000);
+  var _sB = typeof _renderCullB !== 'undefined' ? _renderCullB : (currentPlayer.y + 1000);
 
   for(var _ci=0; _ci<CAMPS.length; _ci++){
     var c=CAMPS[_ci];
@@ -28404,7 +28485,7 @@ function _drawCamps(ctx){
       bs.x+=(bs._targetX-bs.x)*0.24;
       bs.y+=(bs._targetY-bs.y)*0.24;
     }
-    var cdx=c.bx-player.x,cdy=c.by-player.y;
+    var cdx=c.bx-currentPlayer.x,cdy=c.by-currentPlayer.y;
     var cdist=Math.sqrt(cdx*cdx+cdy*cdy);
     // ── Territory ring ─
     ctx.save();
@@ -28447,26 +28528,40 @@ function _drawCamps(ctx){
     if(!bs.alive)continue;
     if(bs.x + (c.bossR||60) < _sL || bs.x - (c.bossR||60) > _sR || bs.y + (c.bossR||60) < _sT || bs.y - (c.bossR||60) > _sB) continue;
     if(bs.dmgFlashFrames>0)bs.dmgFlashFrames--;
-    ctx.save();ctx.translate(bs.x,bs.y);
-    _drawBossBody(ctx,c,bs,t);
-    ctx.restore();
-    // Boss HP bar (world-space)
-    if(cdist<c.terR+150){
-      ctx.save();
-      var hpPct=Math.max(0,bs.hp/c.bossMaxHp);
-      var bwb=c.bossR*2.4,bhb=11;
-      var bxb=bs.x-bwb/2,byb=bs.y-c.bossR-28;
-      _rr(ctx,bxb-2,byb-2,bwb+4,bhb+4,5);ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fill();
-      _rr(ctx,bxb,byb,bwb,bhb,4);ctx.fillStyle='#2a0000';ctx.fill();
-      var hcol=hpPct>0.5?'#ff3333':hpPct>0.25?'#ff8800':'#ffcc00';
-      _rr(ctx,bxb,byb,Math.max(0,bwb*hpPct),bhb,4);ctx.fillStyle=hcol;ctx.fill();
-      ctx.font='bold 11px sans-serif';ctx.textAlign='center';
-      ctx.strokeStyle='rgba(0,0,0,0.8)';ctx.lineWidth=3;ctx.strokeText(c.bossName,bs.x,byb-5);ctx.fillStyle='#fff';ctx.fillText(c.bossName,bs.x,byb-5);
-      ctx.restore();
-    }
   }
-  _drawWorldBossEffects(ctx);
-  _refreshWorldBossBar();
+  _refreshWorldBossBar(currentPlayer);
+}
+
+function _drawWorldBossBodies(ctx,currentPlayer,cullLeft,cullRight,cullTop,cullBottom){
+  if(!currentPlayer)return;
+  var _sL = Number.isFinite(cullLeft) ? cullLeft : currentPlayer.x - 1400;
+  var _sR = Number.isFinite(cullRight) ? cullRight : currentPlayer.x + 1400;
+  var _sT = Number.isFinite(cullTop) ? cullTop : currentPlayer.y - 1000;
+  var _sB = Number.isFinite(cullBottom) ? cullBottom : currentPlayer.y + 1000;
+  for(var i=0;i<CAMPS.length;i++){
+    var c=CAMPS[i],bs=bossState[c.id];
+    if(!bs||!bs.alive)continue;
+    var R=c.bossR||60;
+    if(bs.x+R*3.8<_sL||bs.x-R*3.8>_sR||bs.y+R*3.8<_sT||bs.y-R*3.8>_sB)continue;
+    ctx.save();
+    ctx.translate(bs.x,bs.y);
+    _drawBossBody(ctx,c,bs,typeof globalTime!=='undefined'?globalTime:0);
+    ctx.restore();
+
+    var distance=Math.hypot(c.bx-currentPlayer.x,c.by-currentPlayer.y);
+    if(distance>=c.terR+150)continue;
+    ctx.save();
+    var hpPct=Math.max(0,bs.hp/c.bossMaxHp);
+    var bwb=R*2.4,bhb=11;
+    var bxb=bs.x-bwb/2,byb=bs.y-R*1.95-14;
+    _rr(ctx,bxb-2,byb-2,bwb+4,bhb+4,5);ctx.fillStyle='rgba(0,0,0,0.65)';ctx.fill();
+    _rr(ctx,bxb,byb,bwb,bhb,4);ctx.fillStyle='#2a0000';ctx.fill();
+    var hcol=hpPct>0.5?'#ff3333':hpPct>0.25?'#ff8800':'#ffcc00';
+    _rr(ctx,bxb,byb,Math.max(0,bwb*hpPct),bhb,4);ctx.fillStyle=hcol;ctx.fill();
+    ctx.font='bold 11px sans-serif';ctx.textAlign='center';
+    ctx.strokeStyle='rgba(0,0,0,0.8)';ctx.lineWidth=3;ctx.strokeText(c.bossName,bs.x,byb-5);ctx.fillStyle='#fff';ctx.fillText(c.bossName,bs.x,byb-5);
+    ctx.restore();
+  }
 }
 
 // ── KAYNAK ÇİZİMİ ────────────────────────────────────────────
@@ -28535,18 +28630,27 @@ function _drawBossBody(ctx,c,bs,t){
   var fl = bs.dmgFlashFrames > 0;
   var sprite = _WORLD_BOSS_SPRITES[c.sprite];
   if(sprite&&sprite.complete&&sprite.naturalWidth>0){
-    var state = bs.castingSkill || bs.state==='attack' || bs.state==='hit' || Date.now()<(bs.attackUntil||0)
+    var now=Date.now();
+    var state = bs.castingSkill || bs.state==='attack' || bs.state==='hit' || now<(bs.attackUntil||0)
       ? 2
       : (bs.state==='walk'||bs.aggroed?1:0);
     var frames = c.frames[state] || 8;
-    var frame = Math.floor(t*0.22)%frames;
+    var attackRemaining=(bs.attackUntil||0)-now;
+    var frame=state===2&&!bs.castingSkill&&attackRemaining>0
+      ? Math.min(frames-1,Math.floor(Math.max(0,1-attackRemaining/520)*frames))
+      : Math.floor(t*0.22)%frames;
     var frameSize = 256;
+    var bounds = c.spriteBounds[state];
+    var visibleSize = R*3.5;
+    var sizeScale = visibleSize/Math.max(bounds[2],bounds[3]);
+    var drawWidth = bounds[2]*sizeScale;
+    var drawHeight = bounds[3]*sizeScale;
     ctx.save();
     ctx.rotate((Number(bs.angle)||0)+Math.PI/2);
     ctx.globalAlpha=fl?0.72:1;
-    var spriteSize=R*4.8;
-    ctx.drawImage(sprite,frame*frameSize,state*frameSize,frameSize,frameSize,
-      -spriteSize/2,-spriteSize/2,spriteSize,spriteSize);
+    ctx.drawImage(sprite,
+      frame*frameSize+bounds[0],state*frameSize+bounds[1],bounds[2],bounds[3],
+      -drawWidth/2,-drawHeight/2,drawWidth,drawHeight);
     ctx.restore();
     if(bs.aggroed){
       ctx.save();
@@ -28617,14 +28721,17 @@ function _drawWorldBossEffects(ctx){
     ctx.restore();
   }
 }
+window._drawWorldBossBodies=_drawWorldBossBodies;
+window._drawWorldBossEffects=_drawWorldBossEffects;
 
-function _refreshWorldBossBar(){
-  if(!_bossBarEl||_serverBossId)return;
+function _refreshWorldBossBar(currentPlayer){
+  currentPlayer=currentPlayer||(typeof window._getWorldBossPlayer==='function'?window._getWorldBossPlayer():null);
+  if(!_bossBarEl||_serverBossId||!currentPlayer)return;
   var nearest=null,nearestDistance=Infinity;
   for(var i=0;i<CAMPS.length;i++){
     var camp=CAMPS[i],boss=bossState[camp.id];
     if(!boss)continue;
-    var distance=Math.hypot(player.x-boss.x,player.y-boss.y);
+    var distance=Math.hypot(currentPlayer.x-boss.x,currentPlayer.y-boss.y);
     if(distance<nearestDistance&&distance<camp.terR+250){
       nearest={camp:camp,boss:boss};
       nearestDistance=distance;
@@ -28674,14 +28781,17 @@ function _applyWorldBossStates(states){
   _refreshWorldBossBar();
 }
 
-if(typeof _socket!=='undefined'&&_socket){
-  _socket.on('world_boss_states',_applyWorldBossStates);
-  _socket.on('world_boss_telegraph',function(data){
+function _bindWorldBossSocket(socket){
+  if(!socket||socket===_worldBossSocket)return Boolean(socket);
+  _worldBossSocket=socket;
+  socket.on('world_boss_states',_applyWorldBossStates);
+  socket.on('world_boss_telegraph',function(data){
     if(!data||!bossState[data.id])return;
-    var cap=_isMobile?3:6;
-    if(bossTelegraphs.length<cap)bossTelegraphs.push({...data,mobId:data.id,startTime:Date.now()});
+    var telegraphs=window._getWorldBossTelegraphs();
+    var cap=window._worldBossClient.isMobile()?3:6;
+    if(telegraphs.length<cap)telegraphs.push({...data,mobId:data.id,startTime:Date.now()});
   });
-  _socket.on('world_boss_skill_impact',function(data){
+  socket.on('world_boss_skill_impact',function(data){
     if(!data||!bossState[data.id]||_worldBossEffects.length>=12)return;
     var isLine=data.effect==='rock-spike';
     _worldBossEffects.push({
@@ -28691,41 +28801,40 @@ if(typeof _socket!=='undefined'&&_socket){
       length:Number(data.length)||0,height:Math.max(110,Number(data.radius)*2.2)
     });
   });
-  _socket.on('world_boss_hit',function(data){
+  socket.on('world_boss_hit',function(data){
     var boss=data&&bossState[data.id];
     if(!boss)return;
-    spawnBlood(Number(data.x)||boss.x,Number(data.y)||boss.y,5);
-    if(typeof floatingTexts!=='undefined'&&floatingTexts.length<24){
-      floatingTexts.push({
-        x:(Number(data.x)||boss.x)+(Math.random()-0.5)*36,
-        y:(Number(data.y)||boss.y)-(boss.radius||80),
-        text:'-'+Math.max(0,Number(data.dmg)||0),alpha:1,life:38,color:'#ffb34d'
-      });
-    }
+    var client=window._worldBossClient;
+    client.spawnBlood(Number(data.x)||boss.x,Number(data.y)||boss.y,5);
+    client.addFloatingText({
+      x:(Number(data.x)||boss.x)+(Math.random()-0.5)*36,
+      y:(Number(data.y)||boss.y)-(boss.radius||80),
+      text:'-'+Math.max(0,Number(data.dmg)||0),alpha:1,life:38,color:'#ffb34d'
+    });
   });
-  _socket.on('world_boss_attack',function(data){
+  socket.on('world_boss_attack',function(data){
     if(!data||!data.targetId)return;
-    if(data.targetId===_mySocketId){
-      shake(10);
-      triggerDmgFlash();
-      spawnBlood(player.x,player.y,8);
+    var client=window._worldBossClient;
+    var localPlayer=client.getPlayer();
+    if(data.targetId===socket.id&&localPlayer){
+      client.shake(10);
+      client.triggerDmgFlash();
+      client.spawnBlood(localPlayer.x,localPlayer.y,8);
     }else{
-      var target=_otherPlayers.get(data.targetId);
+      var target=client.getOtherPlayer(data.targetId);
       if(target){
-        spawnBlood(target.x,target.y,6);
-        if(typeof floatingTexts!=='undefined'&&floatingTexts.length<24){
-          floatingTexts.push({x:target.x,y:target.y-38,text:'-'+Math.max(0,Number(data.dmg)||0)+' HP',alpha:1,life:35,color:'#ff4444'});
-        }
+        client.spawnBlood(target.x,target.y,6);
+        client.addFloatingText({x:target.x,y:target.y-38,text:'-'+Math.max(0,Number(data.dmg)||0)+' HP',alpha:1,life:35,color:'#ff4444'});
       }
     }
   });
-  _socket.on('world_boss_defeated',function(data){
+  socket.on('world_boss_defeated',function(data){
     if(!data||!bossState[data.id])return;
     if(typeof window._showAchPopup==='function'){
       window._showAchPopup('👑',data.name+' Yenildi!',(data.killer||'Oyuncular')+' dünya bossunu yendi.');
     }
   });
-  _socket.on('world_boss_respawn',function(data){
+  socket.on('world_boss_respawn',function(data){
     var boss=data&&bossState[data.id];
     if(!boss)return;
     boss.x=Number(data.x)||0;boss.y=Number(data.y)||0;
@@ -28735,15 +28844,26 @@ if(typeof _socket!=='undefined'&&_socket){
     boss.attackUntil=0;boss._serverStateReceived=true;
     _refreshWorldBossBar();
   });
-  _socket.on('world_boss_reward',function(data){
+  socket.on('world_boss_reward',function(data){
     if(!data)return;
     if(typeof window._showAchPopup==='function'){
       window._showAchPopup('🏆',data.name+' Ödülü','+'+data.gold+' altın • +'+data.xp+' XP');
     }
   });
+  socket.on('disconnect',function(){
+    _worldBossesShared=false;
+  });
+  return true;
+}
+var _worldBossSocket=null;
+var _initialWorldBossSocket=window._getWorldBossSocket();
+if(!_bindWorldBossSocket(_initialWorldBossSocket)){
+  window.addEventListener('worldboss-socket-ready',function(event){
+    _bindWorldBossSocket(event.detail);
+  },{once:true});
 }
 
-if(typeof player!=='undefined'&&player)_refreshWorldBossBar();
+_refreshWorldBossBar();
 
 })();
 </script>

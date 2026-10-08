@@ -537,7 +537,7 @@ const SOCKET_EVENT_LIMITS = {
   state: [90, 1000], swing: [35, 1000], pvp_hit: [35, 1000], arrow_hit: [16, 1000],
   spike_hit: [20, 1000], airdrop_hit: [20, 1000], trap_touch: [25, 1000],
   trap_owner_push: [35, 1000], res_hit: [25, 1000], mob_hit_req: [20, 1000],
-  world_boss_hit_req: [20, 1000],
+  world_boss_hit_req: [20, 1000], world_boss_turret_hit_req: [20, 1000],
   place_building: [25, 1000], building_hit: [20, 1000], build_hp_update: [20, 1000], build_tier_update: [60, 1000], build_repair: [4, 1000],
   chat: [4, 2000], quick_chat: [8, 2000], eat_apple: [12, 1000]
 };
@@ -3757,7 +3757,8 @@ setInterval(() => {
         boss.state = now < boss.attackUntil ? 'attack' : 'idle';
         if (now - boss.lastAttackAt >= def.attackCooldownMs) {
           boss.lastAttackAt = now;
-          boss.attackUntil = now + 430;
+          boss.attackUntil = now + 520;
+          boss.state = 'attack';
           const result = applyMobDamage({ id: def.id, typeName: def.name }, target, def.damage);
           io.emit('world_boss_attack', {
             id: def.id, targetId: target.id, x: boss.x, y: boss.y,
@@ -3807,12 +3808,6 @@ setInterval(() => {
     boss.vx = (boss.x - previousX) / 0.05;
     boss.vy = (boss.y - previousY) / 0.05;
     for (let pass = 0; pass < 2; pass++) {
-      for (const obstacle of nearbyServerObstacles(boss.x, boss.y, def.radius + MAX_RESOURCE_COLLISION_RADIUS)) {
-        const resource = obstacle.resource;
-        if (!resource || resource.destroyed) continue;
-        const radius = (Number(resource.radius) || 38) * (SERVER_RESOURCE_COLLISION_FRACTIONS[resource.type] || 0.6);
-        resolveStaticCircleCollision(boss, def.radius, obstacle.x, obstacle.y, radius, { x: previousX, y: previousY });
-      }
       for (const building of nearbyBuildings(boss.x, boss.y, def.radius + 120)) {
         if (!building || (building.hp ?? 100) <= 0 || building.type === 5) continue;
         resolveStaticCircleCollision(boss, def.radius, building.x, building.y, buildingCollisionRadius(building), { x: previousX, y: previousY });
@@ -8130,6 +8125,42 @@ io.on('connection', (socket) => {
     boss.aggroed = true;
     boss.targetId = attacker.id;
     boss.state = 'hit';
+    boss.attackUntil = Math.max(boss.attackUntil, now + 180);
+    broadcastWorldBossStates();
+
+    if (boss.hp <= 0) {
+      defeatWorldBoss(bossDef, boss, attacker, now);
+    } else {
+      io.emit('world_boss_hit', {
+        id: bossId, x: boss.x, y: boss.y, hp: boss.hp, maxHp: boss.maxHp,
+        dmg: damage, attackerId: attacker.id, attackerName: attacker.name || 'Oyuncu'
+      });
+    }
+  });
+
+  socket.on('world_boss_turret_hit_req', (data = {}) => {
+    if (socketEventRateLimited(socket, 'world_boss_turret_hit_req')) return;
+    const attacker = players.get(socket.id);
+    const bossId = String(data.bossId || '');
+    const bossDef = WORLD_BOSS_DEFS.find(def => def.id === bossId);
+    const boss = worldBossStates.get(bossId);
+    const turret = buildings.get(String(data.buildingId || ''));
+    if (!attacker || (attacker.hp ?? 0) <= 0 || attacker._dead ||
+        !bossDef || !boss || !boss.alive ||
+        !turret || Number(turret.type) !== 7 || (turret.hp ?? 0) <= 0 || turret.ownerId !== socket.id) return;
+    if (Math.hypot(turret.x - boss.x, turret.y - boss.y) > turretRange(turret) + bossDef.radius + 16) return;
+
+    const now = Date.now();
+    const shotCooldownMs = Math.ceil((70 - turretTier(turret) * 10) * 1000 / 60);
+    if (now - (turret.lastBossHitAt || 0) < shotCooldownMs) return;
+    turret.lastBossHitAt = now;
+    const damage = turretProjectileDamage(turret);
+    boss.hp = Math.max(0, boss.hp - damage);
+    boss.hitFlashUntil = now + 140;
+    boss.aggroed = true;
+    boss.targetId = attacker.id;
+    boss.state = 'hit';
+    boss.attackUntil = Math.max(boss.attackUntil, now + 180);
     broadcastWorldBossStates();
 
     if (boss.hp <= 0) {
