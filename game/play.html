@@ -8738,6 +8738,11 @@ const ACTIVE_ENEMY_TYPES = [
   { name:'Akrep', biome:'forest', shape:'scorpion', radius:42, hp:130, maxHp:130, color:'#4a2818', outline:'#1a0d06', dmg:28, speed:0.65, xp:45, gold:20, eyes:'#ff4400', typeName:'🦂 Akrep' },
   { name:'Ayı', biome:'forest', shape:'bear', radius:50, hp:260, maxHp:260, color:'#4a2f1b', outline:'#1a1008', dmg:38, speed:0.55, xp:75, gold:35, eyes:'#ffaa00', typeName:'🐻 Ayı' },
   { name:'Örümcek', biome:'forest', shape:'spider', radius:40, hp:110, maxHp:110, color:'#2a1a38', outline:'#0f0814', dmg:24, speed:0.75, xp:40, gold:18, eyes:'#ff1100', typeName:'🕷️ Örümcek' },
+  { name:'Yaban Domuzu', biome:'forest', shape:'wild_boar', radius:48, hp:460, maxHp:460, color:'#70503b', outline:'#2d1c12', dmg:42, speed:0.82, xp:135, gold:34, eyes:'#ffcf9a', typeName:'🐗 Yaban Domuzu' },
+  { name:'Orman Eşek Arısı', biome:'forest', shape:'forest_hornet', radius:36, hp:260, maxHp:260, color:'#d8a628', outline:'#4a3108', dmg:34, speed:1.1, xp:105, gold:26, eyes:'#ff4422', typeName:'🐝 Orman Eşek Arısı' },
+  { name:'Boz Ayı', biome:'forest', shape:'grizzly_bear', radius:68, hp:1250, maxHp:1250, color:'#765137', outline:'#2d1a10', dmg:82, speed:0.58, xp:390, gold:98, eyes:'#ffb347', typeName:'🐻 Boz Ayı' },
+  { name:'Kadim Wendigo', biome:'forest', shape:'elder_wendigo', radius:76, hp:2100, maxHp:2100, color:'#8d9b79', outline:'#263126', dmg:98, speed:0.66, xp:620, gold:165, eyes:'#b9ffcf', typeName:'👹 Kadim Wendigo' },
+  { name:'Ağaç Devi', biome:'forest', shape:'treant_boss', radius:84, hp:2800, maxHp:2800, color:'#56713a', outline:'#1e3218', dmg:112, speed:0.42, xp:800, gold:220, eyes:'#aaff66', typeName:'🌳 Ağaç Devi' },
   // Winter (Ultra-Detailed Mobs)
   { name:'Kutup Ayısı', biome:'winter', shape:'polar_bear', radius:54, hp:1200, maxHp:1200, color:'#eef4fb', outline:'#5a7c9c', dmg:85, speed:0.62, xp:240, gold:90, eyes:'#00d9ff', typeName:'❄️ Kutup Ayısı' },
   { name:'Buz Tilkisi', biome:'winter', shape:'frost_fox', radius:34, hp:420, maxHp:420, color:'#f0f8ff', outline:'#5a82a6', dmg:38, speed:1.08, xp:120, gold:45, eyes:'#00ffff', typeName:'🦊 Buz Tilkisi' },
@@ -8753,6 +8758,7 @@ const ACTIVE_ENEMY_TYPES = [
 ];
 const ACTIVE_MOB_SHAPES = new Set([
   'wolf', 'kurt', 'scorpion', 'akrep', 'bear', 'ayi', 'spider', 'orumcek', 'örümcek',
+  'wild_boar', 'forest_hornet', 'grizzly_bear', 'elder_wendigo', 'treant_boss',
   'polar_bear', 'kutup_ayisi', 'kutup_ayısı',
   'frost_fox', 'buz_tilkisi',
   'mammoth', 'mamut',
@@ -9831,7 +9837,14 @@ function drawWeaponAndHands(ctx, actor, isLocal, globalTime) {
       const natH = scytheImg.naturalHeight || scytheImg.height || 3800;
       const ratioX = natW / 2200;
       const ratioY = natH / 3800;
-      ctx.drawImage(scytheImg, -off.hX * ratioX, -off.hY * ratioY);
+      const srcX = 650 * ratioX;
+      const srcY = 980 * ratioY;
+      const srcW = 1250 * ratioX;
+      const srcH = 1850 * ratioY;
+      const drawScale = 0.135;
+      const drawW = srcW * drawScale;
+      const drawH = srcH * drawScale;
+      ctx.drawImage(scytheImg, srcX, srcY, srcW, srcH, -off.hX * ratioX * drawScale, -off.hY * ratioY * drawScale, drawW, drawH);
       ctx.restore();
     } else if (isScythe) {
       ctx.save();
@@ -12212,6 +12225,12 @@ function checkHits() {
       if (_bDiff > spread * 1.35) return; // slightly wider arc for big boss
       if (bs.lastHitSwingId === _swingId) return;
       bs.lastHitSwingId = _swingId;
+      if (_connected && _socket) {
+        _socket.emit('world_boss_hit_req', { bossId: c.id, swingId: _swingId });
+        bs.dmgFlashFrames = 6;
+        spawnBlood(bs.x, bs.y, 4);
+        return;
+      }
       const _isBossCrit = Math.random() < (player._highCrit ? 0.22 : 0.10);
       const _bossDmg = Math.round(dmg * (_isBossCrit ? _critMulti : 1) * (_comboDmgBonus || 1));
       bs.hp = Math.max(0, bs.hp - _bossDmg);
@@ -15896,11 +15915,28 @@ const _mobWebTraps = [];
 const _mobScratchEffects = [];
 const _mobSpecialEffects = [];
 const _mobWebCooldowns = new Map();
+const _forestMobAttackVfx = [];
+const _forestMobVfxAtlas = new Image();
+_forestMobVfxAtlas.src = '/game/mobassets/forest-mob-vfx.webp';
+const _forestMobAttackVfxRows = {
+  wild_boar: 0,
+  forest_hornet: 2,
+  grizzly_bear: 0,
+  elder_wendigo: 1,
+  treant_boss: 2
+};
 
 function spawnMobAttackEffect(type, x, y, angle, targetX, targetY, radius) {
   const ang = angle !== undefined ? angle : (targetX !== undefined && targetY !== undefined ? Math.atan2(targetY - y, targetX - x) : 0);
 
-  if (type === 'spider' || type === 'orumcek' || type === 'örümcek' || type === 'spider_web') {
+  if (Object.prototype.hasOwnProperty.call(_forestMobAttackVfxRows, type)) {
+    _forestMobAttackVfx.push({
+      x: targetX ?? x, y: targetY ?? y, angle: ang,
+      row: _forestMobAttackVfxRows[type], size: Math.max(80, Math.min(220, radius ? radius * 1.2 : 110)),
+      life: 24, maxLife: 24
+    });
+    playSound(type === 'forest_hornet' ? 520 : type === 'treant_boss' ? 95 : 180, 0.12, 'sawtooth', 0.3);
+  } else if (type === 'spider' || type === 'orumcek' || type === 'örümcek' || type === 'spider_web') {
     _mobWebProjectiles.push({ x, y, vx: Math.cos(ang) * 11, vy: Math.sin(ang) * 11, angle: ang, life: 30, active: true, targetX, targetY });
     playSound(420, 0.06, 'triangle', 0.17);
   } else if (type === 'glacial_slam') {
@@ -15945,6 +15981,21 @@ function spawnMobAttackEffect(type, x, y, angle, targetX, targetY, radius) {
 }
 
 function updateAndDrawMobAttackEffects(ctx) {
+  for (let i = _forestMobAttackVfx.length - 1; i >= 0; i--) {
+    const fx = _forestMobAttackVfx[i];
+    const frame = Math.min(7, Math.floor((1 - fx.life / fx.maxLife) * 8));
+    fx.life--;
+    if (_forestMobVfxAtlas.complete && _forestMobVfxAtlas.naturalWidth === 2048) {
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, fx.life / 5);
+      ctx.translate(fx.x, fx.y);
+      ctx.rotate(fx.angle);
+      ctx.drawImage(_forestMobVfxAtlas, frame * 256, fx.row * 256, 256, 256, -fx.size / 2, -fx.size / 2, fx.size, fx.size);
+      ctx.restore();
+    }
+    if (fx.life <= 0) _forestMobAttackVfx.splice(i, 1);
+  }
+
   // 1. Web Traps
   for (let i = _mobWebTraps.length - 1; i >= 0; i--) {
     const wt = _mobWebTraps[i];
@@ -17997,6 +18048,38 @@ function _drawObsidianGolem(ctx, e, R, isMoving, state, animTimer, attackTimer, 
 }
 
 // ── Main enemy draw entry point ───────────────────────────────
+const _FOREST_MOB_ATLAS_CONFIG = {
+  wild_boar: { file: 'wild-boar.webp', scale: 4.8 },
+  forest_hornet: { file: 'forest-hornet.webp', scale: 3.2 },
+  grizzly_bear: { file: 'grizzly-bear.webp', scale: 5.1 },
+  elder_wendigo: { file: 'elder-wendigo.webp', scale: 4.8 },
+  treant_boss: { file: 'treant-boss.webp', scale: 4.6 }
+};
+const _FOREST_MOB_ATLASES = Object.create(null);
+for (const [shape, config] of Object.entries(_FOREST_MOB_ATLAS_CONFIG)) {
+  const image = new Image();
+  image.src = `/game/mobassets/${config.file}`;
+  _FOREST_MOB_ATLASES[shape] = image;
+}
+function _drawForestMobAtlas(ctx, e, radius, isMoving, flash) {
+  const image = _FOREST_MOB_ATLASES[e.shape];
+  if (!image || !image.complete || image.naturalWidth !== 6144 || image.naturalHeight !== 1152) return false;
+  const attacking = e.state === 'attack';
+  const row = attacking ? 2 : isMoving ? 1 : 0;
+  const frameCount = attacking ? 16 : isMoving ? 12 : 8;
+  const frame = attacking
+    ? Math.min(frameCount - 1, Math.floor(Math.max(0, e.attackTimer || 0) / 55 * frameCount))
+    : Math.floor(Date.now() / (isMoving ? 95 : 150)) % frameCount;
+  const size = radius * _FOREST_MOB_ATLAS_CONFIG[e.shape].scale;
+  ctx.drawImage(image, frame * 384, row * 384, 384, 384, -size / 2, -size / 2, size, size);
+  if (flash) {
+    ctx.fillStyle = 'rgba(255, 180, 120, 0.42)';
+    ctx.beginPath();
+    ctx.arc(0, 0, radius * 0.82, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  return true;
+}
 function drawEnemy(e) {
   if (!e) return;
   // FIX: Ensure all mob properties are valid to prevent invisible mobs
@@ -18089,7 +18172,9 @@ function drawEnemy(e) {
 
   let _mobDrawn = false;
   try {
-    if (shape === 'wolf' || shape === 'kurt') {
+    if (_FOREST_MOB_ATLAS_CONFIG[shape]) {
+      _mobDrawn = _drawForestMobAtlas(ctx, e, R, isMoving, flash);
+    } else if (shape === 'wolf' || shape === 'kurt') {
       _mobDrawn = _drawSpriteWolf(ctx, e, R, isMoving, e.state, e.animTimer, e.attackTimer, flash);
     } else if (shape === 'scorpion' || shape === 'akrep') {
       _mobDrawn = _drawSpriteScorpion(ctx, e, R, isMoving, e.state, e.animTimer, e.attackTimer, flash);
@@ -27813,11 +27898,8 @@ var _mmOvCtx=(function(){
 })();
 
 var _MM_CAMPS_EXT=[
-  {bx:2000,  by:400,   col:'#cc5522',tid:'forest'},
-  {bx:-600,  by:-3100, col:'#4488ff',tid:'snow'  },
-  {bx:3200,  by:1200,  col:'#ccaa00',tid:'desert'},
-  {bx:-3200, by:-1000, col:'#aa22ff',tid:'dark'  },
-  {bx:-800,  by:3200,  col:'#44aa22',tid:'swamp' },
+  {bx:5200, by:0, col:'#b84aff', tid:'worldboss-scorpios'},
+  {bx:0, by:-5200, col:'#d77b32', tid:'worldboss-goliath'},
 ];
 var _MM_CAVES_EXT=[];
 /*
@@ -28058,15 +28140,66 @@ function _rr(ctx,x,y,w,h,r){
 // Açı farkı yardımcısı (boss skill çarpışması için)
 function _angDiff(a,b){var d=a-b;while(d>Math.PI)d-=Math.PI*2;while(d<-Math.PI)d+=Math.PI*2;return d;}
 
-// ── BOSS & KAMP SİSTEMİ DEVRE DIŞI BIRAKILDI (Kullanıcı İsteği) ──────────
-var CAMPS = [];
+// ── SHARED WORLD BOSSES ──────────────────────────────────────
+var CAMPS = [
+  {
+    id: 'worldboss-scorpios', bossName: 'SCORPIOS • Akrep Kralı',
+    bx: 5200, by: 0, terR: 1500, bossR: 112, bossMaxHp: 18000,
+    bossDmg: 38, bossSpd: 1.75, col: '#8a4d19', out: '#321707', eyeCol: '#d7ff45',
+    sprite: 'scorpios', frames: [8, 12, 16],
+    skills: [{
+      id: 'void-burn', name: 'Void Yanığı', skillType: 'circle', radius: 210,
+      dmgMult: 2.2, cooldown: 8500, telegraphDur: 1300, color: '#b84aff',
+      effect: 'void-burn'
+    }]
+  },
+  {
+    id: 'worldboss-goliath', bossName: 'GOLIATH • Kaya Devi',
+    bx: 0, by: -5200, terR: 1650, bossR: 132, bossMaxHp: 26000,
+    bossDmg: 52, bossSpd: 1.3, col: '#754326', out: '#27160e', eyeCol: '#fff0b5',
+    sprite: 'goliath', frames: [8, 12, 16],
+    skills: [{
+      id: 'rock-spike', name: 'Kaya Dikenleri', skillType: 'line', length: 440,
+      radius: 88, dmgMult: 2.4, knockback: 18, cooldown: 9500,
+      telegraphDur: 1450, color: '#d77b32', effect: 'rock-spike'
+    }]
+  }
+];
+window.CAMPS = CAMPS;
 var bossState = {};
+window.bossState = bossState;
 var campResNodes = {};
+window.campResNodes = campResNodes;
+var _worldBossesShared = false;
+var _worldBossEffects = [];
+var _WORLD_BOSS_SPRITES = Object.create(null);
+var _WORLD_BOSS_VFX = Object.create(null);
+function _loadWorldBossImage(cache, id, src) {
+  var image = new Image();
+  image.onerror = function() { console.error('[WorldBoss] Asset yüklenemedi:', src); };
+  image.src = src;
+  cache[id] = image;
+}
+_loadWorldBossImage(_WORLD_BOSS_SPRITES, 'scorpios', 'bossassets/scorpios-spritesheet.webp');
+_loadWorldBossImage(_WORLD_BOSS_SPRITES, 'goliath', 'bossassets/goliath-spritesheet.webp');
+_loadWorldBossImage(_WORLD_BOSS_VFX, 'void-burn', 'bossassets/void-burn-vfx.webp');
+_loadWorldBossImage(_WORLD_BOSS_VFX, 'rock-spike', 'bossassets/rock-spike-vfx.webp');
+CAMPS.forEach(function(c) {
+  bossState[c.id] = {
+    x: c.bx, y: c.by, hp: c.bossMaxHp, maxHp: c.bossMaxHp, alive: true, respawnAt: 0,
+    angle: 0, vx: 0, vy: 0, aggroed: false, castingSkill: null,
+    skillCooldowns: Object.create(null), patrolA: Math.random() * Math.PI * 2,
+    lastPlayerDmg: 0, lastHitSwingId: -1, dmgFlashFrames: 0, state: 'idle',
+    attackUntil: 0, hitFlashUntil: 0
+  };
+  campResNodes[c.id] = [];
+});
 
 // ── AI LOOP (50 ms) ──────────────────────────────────────────
 setInterval(function(){
   try{
     if(typeof player==='undefined'||!player)return;
+    if(_connected || _worldBossesShared) return;
     var now=Date.now();
     var deathShown=document.getElementById('death-overlay')&&
                    document.getElementById('death-overlay').classList.contains('show');
@@ -28089,7 +28222,7 @@ setInterval(function(){
       var dt=0.05;
       if(bs.aggroed){
         // Chase
-        var nx=pdx/pDist,ny=pdy/pDist;
+        var nx=pDist?pdx/pDist:1,ny=pDist?pdy/pDist:0;
         var nx2=bs.x+nx*c.bossSpd*dt*60;
         var ny2=bs.y+ny*c.bossSpd*dt*60;
         var nd=Math.sqrt((nx2-c.bx)*(nx2-c.bx)+(ny2-c.by)*(ny2-c.by));
@@ -28172,6 +28305,13 @@ setInterval(function(){
             if(player.hp<=0&&typeof die==='function'&&typeof _isDying!=='undefined'&&!_isDying)die();
             bs.lastPlayerDmg=now; // normal saldırı cooldown'unu sıfırla
           }
+          if(_csk.effect&&_worldBossEffects.length<12){
+            _worldBossEffects.push({
+              id:_csk.effect,x:bs.x,y:bs.y,angle:bs.angle,
+              startTime:now,duration:720,
+              size:_csk.skillType==='circle'?_csk.radius*2:Math.max(150,_csk.radius*2)
+            });
+          }
           // 600ms sonra skill state'ini temizle
           (function(bsr){setTimeout(function(){bsr.castingSkill=null;},600);})(bs);
         }
@@ -28249,7 +28389,7 @@ function _bossDied(c,bs){
 var _prevCaveHook=window._drawCavesHook;
 window._drawCavesHook=function(ctx){
   if(_prevCaveHook)_prevCaveHook(ctx);
-  if(_qualityLevel>=1){try{_drawCamps(ctx);}catch(e){}}
+  if(CAMPS.length)_drawCamps(ctx);
 };
 
 function _drawCamps(ctx){
@@ -28267,6 +28407,10 @@ function _drawCamps(ctx){
     if(c.bx + _cMaxReach < _sL || c.bx - _cMaxReach > _sR || c.by + _cMaxReach < _sT || c.by - _cMaxReach > _sB) continue;
 
     var bs=bossState[c.id];
+    if(_worldBossesShared&&bs._serverStateReceived){
+      bs.x+=(bs._targetX-bs.x)*0.24;
+      bs.y+=(bs._targetY-bs.y)*0.24;
+    }
     var cdx=c.bx-player.x,cdy=c.by-player.y;
     var cdist=Math.sqrt(cdx*cdx+cdy*cdy);
     // ── Territory ring ─
@@ -28328,6 +28472,8 @@ function _drawCamps(ctx){
       ctx.restore();
     }
   }
+  _drawWorldBossEffects(ctx);
+  _refreshWorldBossBar();
 }
 
 // ── KAYNAK ÇİZİMİ ────────────────────────────────────────────
@@ -28394,6 +28540,29 @@ function _drawCampRes(ctx,node,t){
 function _drawBossBody(ctx,c,bs,t){
   var R = c.bossR || 60;
   var fl = bs.dmgFlashFrames > 0;
+  var sprite = _WORLD_BOSS_SPRITES[c.sprite];
+  if(sprite&&sprite.complete&&sprite.naturalWidth>0){
+    var state = bs.castingSkill || bs.state==='attack' || bs.state==='hit' || Date.now()<(bs.attackUntil||0)
+      ? 2
+      : (bs.state==='walk'||bs.aggroed?1:0);
+    var frames = c.frames[state] || 8;
+    var frame = Math.floor(t*0.22)%frames;
+    var frameSize = 256;
+    ctx.save();
+    ctx.rotate((Number(bs.angle)||0)+Math.PI/2);
+    ctx.globalAlpha=fl?0.72:1;
+    ctx.drawImage(sprite,frame*frameSize,state*frameSize,frameSize,frameSize,
+      -R*1.55,-R*1.55,R*3.1,R*3.1);
+    ctx.restore();
+    if(bs.aggroed){
+      ctx.save();
+      ctx.strokeStyle='rgba(255,70,45,0.78)';
+      ctx.lineWidth=3;
+      ctx.beginPath();ctx.arc(0,0,R*1.35,0,Math.PI*2);ctx.stroke();
+      ctx.restore();
+    }
+    return;
+  }
   ctx.save();
   ctx.fillStyle = fl ? '#ffffff' : (c.col || '#cc3333');
   ctx.strokeStyle = c.out || '#220000';
@@ -28418,6 +28587,157 @@ function _drawBossBody(ctx,c,bs,t){
   }
   ctx.restore();
 }
+
+function _drawWorldBossEffects(ctx){
+  var now=Date.now();
+  for(var i=_worldBossEffects.length-1;i>=0;i--){
+    var effect=_worldBossEffects[i];
+    var elapsed=now-effect.startTime;
+    if(elapsed>=effect.duration){
+      _worldBossEffects.splice(i,1);
+      continue;
+    }
+    var image=_WORLD_BOSS_VFX[effect.id];
+    if(!image||!image.complete||!image.naturalWidth)continue;
+    var frame=Math.min(15,Math.floor(elapsed/effect.duration*16));
+    var size=effect.size||320;
+    var width=effect.id==='rock-spike'?(effect.length||size):size;
+    var height=effect.id==='rock-spike'?(effect.height||size*0.72):size;
+    ctx.save();
+    ctx.translate(effect.x,effect.y);
+    ctx.rotate(Number(effect.angle)||0);
+    ctx.globalAlpha=Math.min(1,(effect.duration-elapsed)/160);
+    ctx.drawImage(image,frame*256,0,256,256,-width/2,-height/2,width,height);
+    ctx.restore();
+  }
+}
+
+function _refreshWorldBossBar(){
+  if(!_bossBarEl||_serverBossId)return;
+  var nearest=null,nearestDistance=Infinity;
+  for(var i=0;i<CAMPS.length;i++){
+    var camp=CAMPS[i],boss=bossState[camp.id];
+    if(!boss)continue;
+    var distance=Math.hypot(player.x-boss.x,player.y-boss.y);
+    if(distance<nearestDistance&&distance<camp.terR+250){
+      nearest={camp:camp,boss:boss};
+      nearestDistance=distance;
+    }
+  }
+  if(!nearest||(!nearest.boss.alive&&nearest.boss.respawnAt<=0)){
+    _bossBarEl.style.display='none';
+    return;
+  }
+  var hp=Math.max(0,nearest.boss.hp||0);
+  var pct=Math.max(0,Math.min(1,hp/nearest.camp.bossMaxHp));
+  if(_bossBarFill)_bossBarFill.style.width=(pct*100)+'%';
+  if(_bossBarHpText){
+    _bossBarHpText.textContent=nearest.boss.alive
+      ? nearest.camp.bossName+'  '+Math.ceil(hp)+' / '+nearest.camp.bossMaxHp+' HP'
+      : nearest.camp.bossName+' • '+Math.max(0,Math.ceil((nearest.boss.respawnAt-Date.now())/1000))+'s';
+  }
+  _bossBarEl.style.display='';
+}
+
+function _applyWorldBossStates(states){
+  if(!Array.isArray(states))return;
+  _worldBossesShared=true;
+  for(var i=0;i<states.length;i++){
+    var state=states[i];
+    var boss=bossState[state&&state.id];
+    if(!boss||!Number.isFinite(Number(state.x))||!Number.isFinite(Number(state.y)))continue;
+    if(!boss._serverStateReceived){
+      boss.x=Number(state.x);
+      boss.y=Number(state.y);
+      boss._serverStateReceived=true;
+    }
+    boss._targetX=Number(state.x);
+    boss._targetY=Number(state.y);
+    boss.vx=Number(state.vx)||0;
+    boss.vy=Number(state.vy)||0;
+    boss.angle=Number(state.angle)||0;
+    boss.hp=Math.max(0,Math.min(boss.maxHp||Infinity,Number(state.hp)||0));
+    boss.alive=Boolean(state.alive);
+    boss.aggroed=Boolean(state.aggroed);
+    boss.state=state.state||'idle';
+    boss.attackUntil=Number(state.attackUntil)||0;
+    boss.hitFlashUntil=Number(state.hitFlashUntil)||0;
+    boss.respawnAt=Number(state.respawnAt)||0;
+    boss.dmgFlashFrames=Date.now()<boss.hitFlashUntil?6:0;
+  }
+  _refreshWorldBossBar();
+}
+
+if(typeof _socket!=='undefined'&&_socket){
+  _socket.on('world_boss_states',_applyWorldBossStates);
+  _socket.on('world_boss_telegraph',function(data){
+    if(!data||!bossState[data.id])return;
+    var cap=_isMobile?3:6;
+    if(bossTelegraphs.length<cap)bossTelegraphs.push({...data,mobId:data.id,startTime:Date.now()});
+  });
+  _socket.on('world_boss_skill_impact',function(data){
+    if(!data||!bossState[data.id]||_worldBossEffects.length>=12)return;
+    var isLine=data.effect==='rock-spike';
+    _worldBossEffects.push({
+      id:data.effect,x:Number(data.x)||0,y:Number(data.y)||0,angle:Number(data.angle)||0,
+      startTime:Date.now(),duration:720,
+      size:isLine?Math.max(160,Number(data.radius)*2.7):Math.max(150,Number(data.radius)*2.2),
+      length:Number(data.length)||0,height:Math.max(110,Number(data.radius)*2.2)
+    });
+  });
+  _socket.on('world_boss_hit',function(data){
+    var boss=data&&bossState[data.id];
+    if(!boss)return;
+    spawnBlood(Number(data.x)||boss.x,Number(data.y)||boss.y,5);
+    if(typeof floatingTexts!=='undefined'&&floatingTexts.length<24){
+      floatingTexts.push({
+        x:(Number(data.x)||boss.x)+(Math.random()-0.5)*36,
+        y:(Number(data.y)||boss.y)-(boss.radius||80),
+        text:'-'+Math.max(0,Number(data.dmg)||0),alpha:1,life:38,color:'#ffb34d'
+      });
+    }
+  });
+  _socket.on('world_boss_attack',function(data){
+    if(!data||!data.targetId)return;
+    if(data.targetId===_mySocketId){
+      shake(10);
+      triggerDmgFlash();
+      spawnBlood(player.x,player.y,8);
+    }else{
+      var target=_otherPlayers.get(data.targetId);
+      if(target){
+        spawnBlood(target.x,target.y,6);
+        if(typeof floatingTexts!=='undefined'&&floatingTexts.length<24){
+          floatingTexts.push({x:target.x,y:target.y-38,text:'-'+Math.max(0,Number(data.dmg)||0)+' HP',alpha:1,life:35,color:'#ff4444'});
+        }
+      }
+    }
+  });
+  _socket.on('world_boss_defeated',function(data){
+    if(!data||!bossState[data.id])return;
+    if(typeof window._showAchPopup==='function'){
+      window._showAchPopup('👑',data.name+' Yenildi!',(data.killer||'Oyuncular')+' dünya bossunu yendi.');
+    }
+  });
+  _socket.on('world_boss_respawn',function(data){
+    var boss=data&&bossState[data.id];
+    if(!boss)return;
+    boss.x=Number(data.x)||0;boss.y=Number(data.y)||0;
+    boss._targetX=boss.x;boss._targetY=boss.y;
+    boss.hp=Number(data.hp)||boss.maxHp;boss.alive=true;
+    boss.respawnAt=0;boss.aggroed=false;boss.state='idle';
+    boss.attackUntil=0;boss._serverStateReceived=true;
+    _refreshWorldBossBar();
+  });
+  _socket.on('world_boss_reward',function(data){
+    if(!data)return;
+    if(typeof window._showAchPopup==='function'){
+      window._showAchPopup('🏆',data.name+' Ödülü','+'+data.gold+' altın • +'+data.xp+' XP');
+    }
+  });
+}
+
+if(typeof player!=='undefined'&&player)_refreshWorldBossBar();
 
 })();
 </script>

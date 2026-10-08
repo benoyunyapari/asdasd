@@ -537,6 +537,7 @@ const SOCKET_EVENT_LIMITS = {
   state: [90, 1000], swing: [35, 1000], pvp_hit: [35, 1000], arrow_hit: [16, 1000],
   spike_hit: [20, 1000], airdrop_hit: [20, 1000], trap_touch: [25, 1000],
   trap_owner_push: [35, 1000], res_hit: [25, 1000], mob_hit_req: [20, 1000],
+  world_boss_hit_req: [20, 1000],
   place_building: [25, 1000], building_hit: [20, 1000], build_hp_update: [20, 1000], build_tier_update: [60, 1000], build_repair: [4, 1000],
   chat: [4, 2000], quick_chat: [8, 2000], eat_apple: [12, 1000]
 };
@@ -607,6 +608,11 @@ const MOB_TYPES = [
   { shape: 'scorpion', biome: 'forest', color: '#4a2818', outline: '#1a0d06', eyes: '#ff4400', typeName: '🦂 Akrep', radius: 52, hp: 520, dmg: 46, speed: 15, wanderSpeed: 9, xpReward: 150, goldReward: 38 },
   { shape: 'bear', biome: 'forest', color: '#4a2f1b', outline: '#1a1008', eyes: '#ffaa00', typeName: '🐻 Ayı', radius: 65, hp: 950, dmg: 72, speed: 14, wanderSpeed: 8, xpReward: 320, goldReward: 82 },
   { shape: 'spider', biome: 'forest', color: '#2a1a38', outline: '#0f0814', eyes: '#ff1100', typeName: '🕷️ Örümcek', radius: 48, hp: 380, dmg: 34, speed: 17, wanderSpeed: 9, xpReward: 100, goldReward: 28 },
+  { shape: 'wild_boar', biome: 'forest', color: '#70503b', outline: '#2d1c12', eyes: '#ffcf9a', typeName: '🐗 Yaban Domuzu', radius: 48, hp: 460, dmg: 42, speed: 17, wanderSpeed: 10, xpReward: 135, goldReward: 34 },
+  { shape: 'forest_hornet', biome: 'forest', color: '#d8a628', outline: '#4a3108', eyes: '#ff4422', typeName: '🐝 Orman Eşek Arısı', radius: 36, hp: 260, dmg: 34, speed: 23, wanderSpeed: 13, xpReward: 105, goldReward: 26 },
+  { shape: 'grizzly_bear', biome: 'forest', color: '#765137', outline: '#2d1a10', eyes: '#ffb347', typeName: '🐻 Boz Ayı', radius: 68, hp: 1250, dmg: 82, speed: 12, wanderSpeed: 7, xpReward: 390, goldReward: 98 },
+  { shape: 'elder_wendigo', biome: 'forest', color: '#8d9b79', outline: '#263126', eyes: '#b9ffcf', typeName: '👹 Kadim Wendigo', radius: 76, hp: 2100, dmg: 98, speed: 14, wanderSpeed: 8, xpReward: 620, goldReward: 165 },
+  { shape: 'treant_boss', biome: 'forest', color: '#56713a', outline: '#1e3218', eyes: '#aaff66', typeName: '🌳 Ağaç Devi', radius: 84, hp: 2800, dmg: 112, speed: 9, wanderSpeed: 5, xpReward: 800, goldReward: 220 },
 
   // Winter (Kış / Buzul Biyomu)
   { shape: 'polar_bear', biome: 'winter', color: '#f0f5fb', outline: '#3b4b5e', eyes: '#00e5ff', typeName: '🐻‍❄️ Kutup Ayısı', radius: 68, hp: 1200, dmg: 85, speed: 15, wanderSpeed: 9, xpReward: 380, goldReward: 95 },
@@ -3532,6 +3538,299 @@ const io = new Server(server, {
   },
 });
 
+const WORLD_BOSS_DEFS = Object.freeze([
+  {
+    id: 'worldboss-scorpios',
+    name: 'SCORPIOS • Akrep Kralı',
+    x: 5200, y: 0,
+    radius: 112, maxHp: 18000, speed: 105, aggroRange: 1500,
+    damage: 38, attackCooldownMs: 1250, respawnMs: 180000,
+    rewardGold: 500, rewardXp: 1200, rewardScore: 2500,
+    skill: { id: 'void-burn', name: 'Void Yanığı', type: 'circle', radius: 210, damage: 90, cooldownMs: 8500, telegraphMs: 1300, color: '#b84aff' }
+  },
+  {
+    id: 'worldboss-goliath',
+    name: 'GOLIATH • Kaya Devi',
+    x: 0, y: -5200,
+    radius: 132, maxHp: 26000, speed: 78, aggroRange: 1650,
+    damage: 52, attackCooldownMs: 1450, respawnMs: 180000,
+    rewardGold: 750, rewardXp: 1800, rewardScore: 3800,
+    skill: { id: 'rock-spike', name: 'Kaya Dikenleri', type: 'line', length: 440, radius: 88, damage: 125, cooldownMs: 9500, telegraphMs: 1450, color: '#d77b32' }
+  }
+]);
+
+const worldBossStates = new Map(WORLD_BOSS_DEFS.map(def => [def.id, {
+  id: def.id, x: def.x, y: def.y, homeX: def.x, homeY: def.y,
+  vx: 0, vy: 0, angle: 0, hp: def.maxHp, maxHp: def.maxHp,
+  alive: true, aggroed: false, state: 'idle', attackUntil: 0,
+  hitFlashUntil: 0, lastAttackAt: 0, nextSkillAt: Date.now() + 5000,
+  casting: null, respawnAt: 0, targetId: null
+}]));
+
+function publicWorldBosses() {
+  return WORLD_BOSS_DEFS.map(def => {
+    const boss = worldBossStates.get(def.id);
+    return {
+      id: boss.id, x: Math.round(boss.x * 10) / 10, y: Math.round(boss.y * 10) / 10,
+      vx: Math.round(boss.vx * 10) / 10, vy: Math.round(boss.vy * 10) / 10,
+      angle: boss.angle, hp: boss.hp, maxHp: boss.maxHp,
+      alive: boss.alive, aggroed: boss.aggroed, state: boss.state,
+      attackUntil: boss.attackUntil, hitFlashUntil: boss.hitFlashUntil,
+      respawnAt: boss.respawnAt
+    };
+  });
+}
+
+function broadcastWorldBossStates(volatile = false) {
+  const states = publicWorldBosses();
+  if (volatile) io.volatile.emit('world_boss_states', states);
+  else io.emit('world_boss_states', states);
+}
+
+function worldBossSkillHitsPlayer(def, boss, cast, target) {
+  const dx = target.x - cast.x;
+  const dy = target.y - cast.y;
+  const distance = Math.hypot(dx, dy);
+  const playerRadius = Math.max(16, Math.min(64, Number(target.radius) || 24));
+  if (cast.type === 'circle') return distance <= cast.radius + playerRadius;
+  if (cast.type === 'line') {
+    const forward = dx * Math.cos(cast.angle) + dy * Math.sin(cast.angle);
+    const lateral = Math.abs(-dx * Math.sin(cast.angle) + dy * Math.cos(cast.angle));
+    return forward >= 0 && forward <= cast.length && lateral <= cast.radius + playerRadius;
+  }
+  return false;
+}
+
+function defeatWorldBoss(def, boss, attacker, now) {
+  boss.alive = false;
+  boss.aggroed = false;
+  boss.state = 'dead';
+  boss.vx = 0;
+  boss.vy = 0;
+  boss.casting = null;
+  boss.targetId = null;
+  boss.respawnAt = now + def.respawnMs;
+  const gold = def.rewardGold;
+  const xp = Math.max(1, Math.round(def.rewardXp * Math.max(0.1, Number(adminConfig.xpRate) || 1)));
+  const score = def.rewardScore;
+
+  if (attacker) {
+    attacker.gold = Math.min(MAX_ACCOUNT_COINS, (attacker.gold || 0) + gold);
+    attacker.xp = Math.min(MAX_ACCOUNT_XP, (attacker.xp || 0) + xp);
+    attacker.score = Math.min(MAX_ACCOUNT_SCORE, (attacker.score || 0) + score);
+    attacker.sc = attacker.score;
+    attacker.kills = (attacker.kills || 0) + 1;
+    if (attacker._authUser) {
+      attacker._authUser.xp = attacker.xp;
+      attacker._authUser.rankId = rankInfo(attacker.xp).rankId;
+    }
+    recordServerQuestProgress(attacker, { kills: 1, gold });
+    persistPlayerScore(attacker);
+    io.to(attacker.id).emit('self_state', { g: attacker.gold, xp: attacker.xp, sc: attacker.score, k: attacker.kills });
+    io.to(attacker.id).emit('world_boss_reward', { id: def.id, name: def.name, gold, xp, score });
+  }
+
+  broadcastWorldBossStates();
+  io.emit('world_boss_defeated', {
+    id: def.id, name: def.name, killer: attacker?.name || 'Oyuncular',
+    respawnAt: boss.respawnAt
+  });
+}
+
+let lastWorldBossBroadcastAt = 0;
+function resolveStaticCircleCollision(entity, entityRadius, obstacleX, obstacleY, obstacleRadius, previousPosition = null) {
+  const minDistance = entityRadius + obstacleRadius;
+  let dx = entity.x - obstacleX;
+  let dy = entity.y - obstacleY;
+  const distanceSquared = dx * dx + dy * dy;
+  let distance = Math.sqrt(distanceSquared);
+  if (distanceSquared >= minDistance * minDistance) {
+    const startX = Number(previousPosition?.x);
+    const startY = Number(previousPosition?.y);
+    if (!Number.isFinite(startX) || !Number.isFinite(startY)) return false;
+    const moveX = entity.x - startX;
+    const moveY = entity.y - startY;
+    const moveSquared = moveX * moveX + moveY * moveY;
+    if (moveSquared <= 1e-9) return false;
+    const offsetX = startX - obstacleX;
+    const offsetY = startY - obstacleY;
+    const b = 2 * (offsetX * moveX + offsetY * moveY);
+    const c = offsetX * offsetX + offsetY * offsetY - minDistance * minDistance;
+    const discriminant = b * b - 4 * moveSquared * c;
+    if (c <= 0 || discriminant < 0) return false;
+    const entry = (-b - Math.sqrt(discriminant)) / (2 * moveSquared);
+    if (entry < 0 || entry > 1) return false;
+    const contactX = startX + moveX * entry;
+    const contactY = startY + moveY * entry;
+    dx = contactX - obstacleX;
+    dy = contactY - obstacleY;
+    distance = Math.hypot(dx, dy);
+    entity.x = contactX;
+    entity.y = contactY;
+  }
+
+  const angle = Number.isFinite(Number(entity.angle)) ? Number(entity.angle) : 0;
+  const nx = distance > 1e-6 ? dx / distance : -Math.cos(angle);
+  const ny = distance > 1e-6 ? dy / distance : -Math.sin(angle);
+  const separation = Math.max(0, minDistance - distance) + 0.5;
+  entity.x += nx * separation;
+  entity.y += ny * separation;
+
+  const inwardVelocity = (Number(entity.vx) || 0) * nx + (Number(entity.vy) || 0) * ny;
+  if (inwardVelocity < 0) {
+    entity.vx = (Number(entity.vx) || 0) - inwardVelocity * nx;
+    entity.vy = (Number(entity.vy) || 0) - inwardVelocity * ny;
+  }
+  return true;
+}
+
+setInterval(() => {
+  const now = Date.now();
+  let changed = false;
+
+  for (const def of WORLD_BOSS_DEFS) {
+    const boss = worldBossStates.get(def.id);
+    if (!boss.alive) {
+      if (boss.respawnAt > 0 && now >= boss.respawnAt) {
+        boss.x = def.x; boss.y = def.y; boss.homeX = def.x; boss.homeY = def.y;
+        boss.vx = 0; boss.vy = 0; boss.hp = def.maxHp;
+        boss.alive = true; boss.aggroed = false; boss.state = 'idle';
+        boss.attackUntil = 0; boss.hitFlashUntil = 0; boss.lastAttackAt = 0;
+        boss.nextSkillAt = now + 5000; boss.casting = null;
+        boss.respawnAt = 0; boss.targetId = null;
+        io.emit('world_boss_respawn', { id: def.id, x: def.x, y: def.y, hp: def.maxHp, maxHp: def.maxHp });
+        changed = true;
+      }
+      continue;
+    }
+
+    if (boss.casting && now >= boss.casting.endsAt) {
+      const cast = boss.casting;
+      boss.casting = null;
+      boss.state = 'attack';
+      boss.attackUntil = now + 500;
+      io.emit('world_boss_skill_impact', {
+        id: def.id, effect: def.skill.id, x: cast.x, y: cast.y,
+        angle: cast.angle, radius: cast.radius, length: cast.length
+      });
+      for (const target of players.values()) {
+        if (!isPlayerCombatEligible(target) || !worldBossSkillHitsPlayer(def, boss, cast, target)) continue;
+        const result = applyMobDamage({ id: def.id, typeName: def.name }, target, def.skill.damage);
+        if (!result) continue;
+        io.emit('world_boss_attack', {
+          id: def.id, targetId: target.id, x: cast.x, y: cast.y,
+          angle: cast.angle, skill: def.skill.id, dmg: result.dmg
+        });
+        if ((target.hp ?? 0) <= 0) {
+          onPlayerDeath(target.id);
+          io.emit('player_dead', { id: target.id });
+        }
+      }
+      changed = true;
+    }
+
+    let target = null;
+    let targetDistance = Infinity;
+    for (const candidate of players.values()) {
+      if (!isPlayerCombatEligible(candidate)) continue;
+      const distance = Math.hypot((candidate.x || 0) - boss.x, (candidate.y || 0) - boss.y);
+      if (distance < targetDistance && distance <= def.aggroRange) {
+        target = candidate;
+        targetDistance = distance;
+      }
+    }
+
+    const previousX = boss.x;
+    const previousY = boss.y;
+    if (target) {
+      boss.targetId = target.id;
+      boss.aggroed = true;
+      boss.angle = Math.atan2(target.y - boss.y, target.x - boss.x);
+      if (boss.casting) {
+        boss.state = 'attack';
+      } else if (targetDistance > def.radius + 48) {
+        const step = Math.min(targetDistance - def.radius - 48, def.speed * 0.05);
+        boss.x += Math.cos(boss.angle) * step;
+        boss.y += Math.sin(boss.angle) * step;
+        boss.state = 'walk';
+      } else {
+        boss.state = now < boss.attackUntil ? 'attack' : 'idle';
+        if (now - boss.lastAttackAt >= def.attackCooldownMs) {
+          boss.lastAttackAt = now;
+          boss.attackUntil = now + 430;
+          const result = applyMobDamage({ id: def.id, typeName: def.name }, target, def.damage);
+          io.emit('world_boss_attack', {
+            id: def.id, targetId: target.id, x: boss.x, y: boss.y,
+            angle: boss.angle, dmg: result?.dmg || def.damage
+          });
+          if ((target.hp ?? 0) <= 0) {
+            onPlayerDeath(target.id);
+            io.emit('player_dead', { id: target.id });
+          }
+        }
+      }
+
+      if (!boss.casting && now >= boss.nextSkillAt && targetDistance <= def.aggroRange * 0.75) {
+        const skill = def.skill;
+        boss.casting = {
+          type: skill.type, x: skill.type === 'circle' ? target.x : boss.x,
+          y: skill.type === 'circle' ? target.y : boss.y,
+          angle: boss.angle, radius: skill.radius || 0, length: skill.length || 0,
+          endsAt: now + skill.telegraphMs
+        };
+        boss.nextSkillAt = now + skill.cooldownMs;
+        boss.state = 'attack';
+        io.emit('world_boss_telegraph', {
+          id: def.id, x: boss.casting.x, y: boss.casting.y,
+          startTime: now, dur: skill.telegraphMs, color: skill.color,
+          skillType: skill.type, skillName: skill.name, bossType: def.id,
+          radius: skill.radius, length: skill.length, angle: boss.angle
+        });
+      }
+    } else {
+      boss.aggroed = false;
+      boss.targetId = null;
+      boss.casting = null;
+      const dx = boss.homeX - boss.x;
+      const dy = boss.homeY - boss.y;
+      const distance = Math.hypot(dx, dy);
+      if (distance > 2) {
+        const step = Math.min(distance, def.speed * 0.035);
+        boss.angle = Math.atan2(dy, dx);
+        boss.x += dx / distance * step;
+        boss.y += dy / distance * step;
+        boss.state = 'walk';
+      } else {
+        boss.state = 'idle';
+      }
+    }
+    boss.vx = (boss.x - previousX) / 0.05;
+    boss.vy = (boss.y - previousY) / 0.05;
+    for (let pass = 0; pass < 2; pass++) {
+      for (const obstacle of nearbyServerObstacles(boss.x, boss.y, def.radius + MAX_RESOURCE_COLLISION_RADIUS)) {
+        const resource = obstacle.resource;
+        if (!resource || resource.destroyed) continue;
+        const radius = (Number(resource.radius) || 38) * (SERVER_RESOURCE_COLLISION_FRACTIONS[resource.type] || 0.6);
+        resolveStaticCircleCollision(boss, def.radius, obstacle.x, obstacle.y, radius, { x: previousX, y: previousY });
+      }
+      for (const building of nearbyBuildings(boss.x, boss.y, def.radius + 120)) {
+        if (!building || (building.hp ?? 100) <= 0 || building.type === 5) continue;
+        resolveStaticCircleCollision(boss, def.radius, building.x, building.y, buildingCollisionRadius(building), { x: previousX, y: previousY });
+      }
+    }
+    boss.x = Math.max(-6800, Math.min(6800, boss.x));
+    boss.y = Math.max(-6800, Math.min(6800, boss.y));
+    boss.vx = (boss.x - previousX) / 0.05;
+    boss.vy = (boss.y - previousY) / 0.05;
+    if (Math.abs(boss.x - previousX) > 0.01 || Math.abs(boss.y - previousY) > 0.01) changed = true;
+  }
+
+  if (changed || now - lastWorldBossBroadcastAt >= 100) {
+    broadcastWorldBossStates(true);
+    lastWorldBossBroadcastAt = now;
+  }
+}, 50).unref();
+
 io.engine.on('connection_error', (err) => {
   const details = err?.message || 'unknown socket.io engine error';
   console.warn('[Socket.IO] engine connection error:', details);
@@ -4183,6 +4482,10 @@ const serverObstacles = [];
 const obstacleGrid = new Map();
 const OBSTACLE_CELL_SIZE = 180;
 const MAX_RESOURCE_COLLISION_RADIUS = 224 * 0.96;
+const SERVER_RESOURCE_COLLISION_FRACTIONS = Object.freeze({
+  wood: 0.65, stone: 0.82, gold: 0.8, apple: 0.65,
+  bush: 0.6, mushroom: 0.55, crystal: 0.6, hive: 0.58
+});
 function obstacleCellKey(x, y) {
   return `${Math.floor(x / OBSTACLE_CELL_SIZE)},${Math.floor(y / OBSTACLE_CELL_SIZE)}`;
 }
@@ -6597,6 +6900,7 @@ io.on('connection', (socket) => {
       announcement: adminConfig.announcement || ''
     });
     socket.emit('mob_ids', [...mobs.keys()]);
+    socket.emit('world_boss_states', publicWorldBosses());
   });
 
   socket.on('loadout_select', (data = {}) => {
@@ -6648,6 +6952,7 @@ io.on('connection', (socket) => {
         }
       });
       socket.emit('mob_ids', [...mobs.keys()]);
+      socket.emit('world_boss_states', publicWorldBosses());
       return;
     }
     const authUser = verifyToken(data.token);
@@ -6828,6 +7133,7 @@ io.on('connection', (socket) => {
       }
     });
     socket.emit('mob_ids', [...state.visibleMobIds]);
+    socket.emit('world_boss_states', publicWorldBosses());
     for (const [otherId, otherPlayer] of players) {
       if (otherId !== socket.id && (otherPlayer.mode || 'online') === (state.mode || 'online')) {
         io.to(otherId).emit('player_join', { id: socket.id, state: compactFullState(state) });
@@ -7107,9 +7413,46 @@ io.on('connection', (socket) => {
           if (b.type === 6 && b.ownerId === player.id) continue; // Owner can cross own trap
           if ((b.hp ?? 100) <= 0) continue;
           const bRad = Number(b.radius) || (b.type === 8 ? 24 : (b.type === 6 ? 78 : (b.type === 10 ? 30 : 36)));
-          const col = NetworkPhysics.resolveCircleCircle(player, pRad, 1.0, b, bRad, 0.0);
-          if (col && col.collided && pass === 0 && data.vx !== undefined && data.vy !== undefined) {
-            NetworkPhysics.projectVelocitySlide(data, col.nx, col.ny, 0.05);
+          if (resolveStaticCircleCollision(player, pRad, b.x, b.y, bRad, { x: prevX, y: prevY }) &&
+              pass === 0 && data.vx !== undefined && data.vy !== undefined) {
+            const dx = player.x - b.x;
+            const dy = player.y - b.y;
+            const distance = Math.hypot(dx, dy) || 1;
+            const nx = dx / distance;
+            const ny = dy / distance;
+            const inwardVelocity = (Number(data.vx) || 0) * nx + (Number(data.vy) || 0) * ny;
+            if (inwardVelocity < 0) {
+              data.vx = (Number(data.vx) || 0) - inwardVelocity * nx;
+              data.vy = (Number(data.vy) || 0) - inwardVelocity * ny;
+              player.vx = data.vx;
+              player.vy = data.vy;
+            }
+          }
+        }
+
+        // Keep authoritative player positions aligned with the client resource colliders.
+        const resourceSearchRadius = pRad + 224 * 0.82;
+        for (const obstacle of nearbyServerObstacles(player.x, player.y, resourceSearchRadius)) {
+          const resource = obstacle.resource;
+          if (!resource || resource.destroyed) continue;
+          const resourceRadius = (Number(resource.radius) || 38) * (SERVER_RESOURCE_COLLISION_FRACTIONS[resource.type] || 0.6);
+          if (resolveStaticCircleCollision(player, pRad, obstacle.x, obstacle.y, resourceRadius, { x: prevX, y: prevY }) &&
+              pass === 0 && data.vx !== undefined && data.vy !== undefined) {
+            const velocity = { vx: Number(data.vx) || 0, vy: Number(data.vy) || 0 };
+            const nx = player.x - obstacle.x;
+            const ny = player.y - obstacle.y;
+            const distance = Math.hypot(nx, ny) || 1;
+            const normalX = nx / distance;
+            const normalY = ny / distance;
+            const inwardVelocity = velocity.vx * normalX + velocity.vy * normalY;
+            if (inwardVelocity < 0) {
+              velocity.vx -= inwardVelocity * normalX;
+              velocity.vy -= inwardVelocity * normalY;
+              data.vx = velocity.vx;
+              data.vy = velocity.vy;
+              player.vx = velocity.vx;
+              player.vy = velocity.vy;
+            }
           }
         }
 
@@ -7199,7 +7542,9 @@ io.on('connection', (socket) => {
     attacker.lastSwingAt = now;
     attacker.lastSwingId = swingId;
     attacker.lastMobHitIds = new Set();
+    attacker.lastBossHitIds = new Set();
     attacker.lastBuildingHitIds = new Set();
+    attacker.lastAttackAngle = angle;
     attacker.attackUntil = now + (isBuildingWeapon ? 240 : swingCooldown);
     attacker.isAttacking = true;
     attacker.attackTimer = 0;
@@ -7739,6 +8084,60 @@ io.on('connection', (socket) => {
       setTimeout(() => {
         if (players.size > 0) ensureMobs();
       }, 4000 + Math.random() * 2000);
+    }
+  });
+
+  socket.on('world_boss_hit_req', (data = {}) => {
+    if (socketEventRateLimited(socket, 'world_boss_hit_req')) return;
+    const attacker = players.get(socket.id);
+    const bossId = String(data.bossId || '');
+    const bossDef = WORLD_BOSS_DEFS.find(def => def.id === bossId);
+    const boss = worldBossStates.get(bossId);
+    if (!attacker || !bossDef || !boss || !boss.alive || (attacker.hp ?? 0) <= 0 || attacker._dead) return;
+
+    const now = Date.now();
+    const swingId = Number(data.swingId);
+    if (!Number.isFinite(swingId) || swingId !== attacker.lastSwingId || now - (attacker.lastSwingAt || 0) > 400) return;
+    const hitIds = attacker.lastBossHitIds || (attacker.lastBossHitIds = new Set());
+    if (hitIds.has(bossId)) return;
+
+    const weapon = Number(attacker.weapon) === 2 ? 2 : Number(attacker.weapon) === 1 ? 1 : 0;
+    if (!weapon) return;
+    const isScythe = weapon === 2 && Boolean(attacker.scytheId || (attacker.swordSkin && String(attacker.swordSkin).startsWith('scythe_')));
+    const attackAngle = Number(attacker.lastAttackAngle);
+    if (!Number.isFinite(attackAngle)) return;
+    const dx = boss.x - (Number(attacker.x) || 0);
+    const dy = boss.y - (Number(attacker.y) || 0);
+    const weaponRange = isScythe ? 168 : (weapon === 2 ? 140 : 128);
+    const attackerRadius = Math.max(16, Math.min(64, Number(attacker.radius) || 24));
+    if (Math.hypot(dx, dy) > weaponRange + bossDef.radius + attackerRadius + 16) return;
+
+    let angleDiff = Math.atan2(dy, dx) - attackAngle;
+    while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+    while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+    const spread = isScythe ? Math.PI / 2.6 : (weapon === 2 ? Math.PI / 3.25 : Math.PI / 2.57);
+    if (Math.abs(angleDiff) > spread) return;
+    hitIds.add(bossId);
+
+    const tier = Math.max(0, Math.min(8, Number(weapon === 2 ? attacker.swordTier : attacker.axeTier) || 0));
+    const damage = calculateMeleeDamage(weapon, tier, {
+      isScythe,
+      damageMultiplier: Math.max(0.5, Math.min(3, Number(attacker.damageMultiplier) || 1))
+    });
+    boss.hp = Math.max(0, boss.hp - damage);
+    boss.hitFlashUntil = now + 140;
+    boss.aggroed = true;
+    boss.targetId = attacker.id;
+    boss.state = 'hit';
+    broadcastWorldBossStates();
+
+    if (boss.hp <= 0) {
+      defeatWorldBoss(bossDef, boss, attacker, now);
+    } else {
+      io.emit('world_boss_hit', {
+        id: bossId, x: boss.x, y: boss.y, hp: boss.hp, maxHp: boss.maxHp,
+        dmg: damage, attackerId: attacker.id, attackerName: attacker.name || 'Oyuncu'
+      });
     }
   });
 

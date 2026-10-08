@@ -1,4 +1,4 @@
-const CACHE_NAME = 'forestbrawl-shell-v11';
+const CACHE_NAME = 'forestbrawl-shell-v13';
 const APP_SHELL = [
   './',
   './index.html',
@@ -10,7 +10,17 @@ const APP_SHELL = [
   './originalicon-512.png',
   './apple-touch-icon.png',
   './favicon-32.png',
-  './favicon-16.png'
+  './favicon-16.png',
+  './game/bossassets/scorpios-spritesheet.webp',
+  './game/bossassets/goliath-spritesheet.webp',
+  './game/bossassets/void-burn-vfx.webp',
+  './game/bossassets/rock-spike-vfx.webp',
+  './game/mobassets/wild-boar.webp',
+  './game/mobassets/forest-hornet.webp',
+  './game/mobassets/grizzly-bear.webp',
+  './game/mobassets/elder-wendigo.webp',
+  './game/mobassets/treant-boss.webp',
+  './game/mobassets/forest-mob-vfx.webp'
 ];
 
 self.addEventListener('install', event => {
