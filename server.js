@@ -3888,6 +3888,7 @@ function compactStateCompressed(state) {
     vx: Math.round((Number(state.vx) || 0) * 10) / 10,
     vy: Math.round((Number(state.vy) || 0) * 10) / 10,
     atk: isAtk ? 1 : 0,
+    bt: state.isBot ? 1 : 0,
     t: state.trappedBy ? 1 : 0,
     r: String(state.roomId || '')
   };
@@ -3904,7 +3905,7 @@ function compressedStateSignature(payload) {
   if (!payload) return '';
   return [
     payload.x, payload.y, payload.a, payload.hp, payload.mhp, payload.w, payload.sq,
-    payload.bx, payload.by, payload.tp, payload.vx, payload.vy, payload.atk, payload.t, payload.r
+    payload.bx, payload.by, payload.tp, payload.vx, payload.vy, payload.atk, payload.bt, payload.t, payload.r
   ].join('|');
 }
 
