@@ -1,0 +1,21 @@
+{
+  "name": "forestbrawl-host",
+  "private": true,
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "check": "node --check server.js && node --check game/networkPhysics.js && node --check game/sw.js && node --check sw.js && node --check scripts/prepare-build-assets.js",
+    "build:assets": "node scripts/prepare-build-assets.js"
+  },
+  "dependencies": {
+    "socket.io": "^4.8.3"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.1",
+    "sharp": "^0.35.5",
+    "socket.io-client": "^4.8.3"
+  }
+}

@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ForestBrawl Admin</title>
+  <link rel="stylesheet" href="/admin.css">
+</head>
+<body>
+  <main class="admin-shell">
+    <section id="login-view" class="admin-card">
+      <p class="card-eyebrow">FORESTBRAWL</p>
+      <h1>Admin Paneli</h1>
+      <p>Owner hesabınla güvenli şekilde giriş yap.</p>
+      <form id="login-form">
+        <label for="username">Kullanıcı adı</label>
+        <input id="username" name="username" autocomplete="username" required>
+        <label for="password">Şifre</label>
+        <div class="password-row">
+          <input id="password" name="password" type="password" autocomplete="current-password" required>
+          <button id="toggle-pwd-btn" type="button" aria-label="Şifreyi göster">👁</button>
+        </div>
+        <p id="login-error" class="hidden" role="alert"></p>
+        <button id="login-submit-btn" class="btn-primary" type="submit"><span>Panele Güvenli Bağlan</span></button>
+      </form>
+    </section>
+
+    <section id="app-view" class="hidden admin-app">
+      <header class="admin-header">
+        <div><strong>ForestBrawl Admin</strong><small id="owner-display-name"></small></div>
+        <div class="header-actions"><span id="owner-avatar"></span><button id="refresh-btn" type="button">Yenile</button><button id="sfx-toggle-btn" type="button"><span id="sfx-icon"></span></button><button id="logout-btn" type="button">Çıkış</button></div>
+      </header>
+      <nav class="admin-nav">
+        <button class="nav-btn active" data-tab="overview" type="button">Genel Bakış <b id="nav-badge-online">0</b></button>
+        <button class="nav-btn" data-tab="players" type="button">Oyuncular</button>
+        <button class="nav-btn" data-tab="world" type="button">Dünya</button>
+        <button class="nav-btn" data-tab="users" type="button">Hesaplar</button>
+        <button class="nav-btn" data-tab="cosmetics" type="button">Kozmetik</button>
+        <button class="nav-btn" data-tab="audit" type="button">Loglar</button>
+      </nav>
+      <div class="admin-content">
+        <p id="active-tab-title">OVERVIEW</p>
+        <h2 id="view-heading">Sunucu Nabzı</h2>
+        <section id="tab-overview" class="tab-pane">
+          <div class="stats-grid">
+            <article><b id="stat-online">0</b><span id="stat-online-detail">0 aktif savaşta</span></article>
+            <article><b id="stat-mobs">0</b><span>Mob</span></article>
+            <article><b id="stat-buildings">0</b><span>Yapı</span></article>
+            <article><b id="stat-users">0</b><span>Kayıtlı hesap</span></article>
+            <article><b id="stat-clans">0</b><span>Klan</span></article>
+          </div>
+        </section>
+        <section id="tab-players" class="tab-pane hidden"><input id="player-search" placeholder="Oyuncu ara"><span id="player-roster-count"></span><table><tbody id="players-table-body"></tbody></table></section>
+        <section id="tab-world" class="tab-pane hidden"><label><input id="cfg-maintenance" type="checkbox"> Bakım modu</label><label><input id="cfg-pvp" type="checkbox" checked> PvP</label><button id="save-world-config-btn" type="button">Kaydet</button></section>
+        <section id="tab-users" class="tab-pane hidden"><input id="user-search" placeholder="Hesap ara"><span id="user-total-count"></span><table><tbody id="users-table-body"></tbody></table></section>
+        <section id="tab-cosmetics" class="tab-pane hidden">
+          <div class="toolbar-row">
+            <div class="category-filters">
+              <button class="cat-filter-btn active" data-type="all" type="button">Tümü</button>
+              <button class="cat-filter-btn" data-type="skin" type="button">Deriler</button>
+              <button class="cat-filter-btn" data-type="axe" type="button">Baltalar</button>
+              <button class="cat-filter-btn" data-type="sword" type="button">Kılıçlar</button>
+            </div>
+            <div class="hud-pill"><span class="pulse-indicator"></span> <span id="cosmetic-catalog-count">0 / 0 Kozmetik</span></div>
+          </div>
+
+          <div class="cosmetic-upload-panel">
+            <form id="cosmetic-editor-form" class="cosmetic-upload-form">
+              <div class="cosmetic-upload-preview">
+                <div class="cosmetic-preview-stage has-image" id="cosmetic-editor-preview-stage">
+                  <img id="cosmetic-editor-preview" src="" alt="Kozmetik Önizleme">
+                </div>
+                <div class="cosmetic-upload-status" id="cosmetic-editor-meta">Seçilen kozmetiği düzenlemek için kartı seç.</div>
+              </div>
+
+              <div class="cosmetic-upload-fields">
+                <div class="input-group">
+                  <label class="input-label" for="cosmetic-editor-id">Kozmetik ID</label>
+                  <input id="cosmetic-editor-id" class="custom-input" type="text" readonly>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="cosmetic-editor-name">Ad</label>
+                  <input id="cosmetic-editor-name" class="custom-input" type="text" placeholder="Örnek: Emerald Skin">
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="cosmetic-editor-type">Tür</label>
+                  <select id="cosmetic-editor-type" class="custom-select">
+                    <option value="skin">skin</option>
+                    <option value="axe">axe</option>
+                    <option value="sword">sword</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="cosmetic-editor-rarity">Rarity</label>
+                  <select id="cosmetic-editor-rarity" class="custom-select">
+                    <option value="common">common</option>
+                    <option value="rare">rare</option>
+                    <option value="epic">epic</option>
+                    <option value="legendary">legendary</option>
+                    <option value="mythic">mythic</option>
+                  </select>
+                </div>
+                <div class="input-group">
+                  <label class="input-label" for="cosmetic-editor-price">Fiyat (Altın)</label>
+                  <input id="cosmetic-editor-price" class="custom-input" type="number" min="0" step="1" value="1000">
+                </div>
+                <div class="cosmetic-upload-actions">
+                  <button id="cosmetic-editor-delete" class="btn-danger-outline" type="button">Sil</button>
+                  <button id="cosmetic-editor-save" class="btn-primary btn-block" type="submit">Değişiklikleri Kaydet</button>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          <div id="cosmetics-gallery-grid" class="cosmetics-grid"></div>
+        </section>
+        <section id="tab-audit" class="tab-pane hidden"><div id="full-audit-timeline"></div></section>
+      </div>
+    </section>
+
+    <div id="toast-container"></div>
+    <div id="admin-runtime-nodes" hidden>
+      <span id="server-uptime-label"></span><span id="server-ram-label"></span><span id="sys-rss-stat"></span><span id="sys-heap-stat"></span><span id="sys-banned-stat"></span>
+      <span id="stat-parties-badge"></span><span id="quick-maint-status"></span><span id="quick-pvp-status"></span><div id="quick-audit-feed"></div>
+      <input id="quick-maintenance-toggle" type="checkbox"><input id="quick-pvp-toggle" type="checkbox"><input id="cfg-xprate" type="range" value="1"><span id="cfg-xprate-val"></span><input id="cfg-mobrate" type="range" value="1"><span id="cfg-mobrate-val"></span><input id="cfg-resrate" type="range" value="1"><span id="cfg-resrate-val"></span>
+      <input id="quick-announce-title"><textarea id="quick-announce-msg"></textarea><span id="quick-char-count"></span><div id="live-preview-banner"><span id="preview-title"></span><span id="preview-message"></span><span id="preview-icon"></span><span id="preview-tag"></span></div><button id="quick-send-announce-btn" type="button"></button><button id="quick-clear-announce-btn" type="button"></button><button id="hero-broadcast-trigger" type="button"></button>
+      <form id="studio-broadcast-form"><select id="studio-category"><option value="info">info</option></select><input id="studio-title"><textarea id="studio-message"></textarea><select id="studio-sound"><option value="bell">bell</option></select><span id="studio-char-count"></span><div id="studio-preview-banner"><span id="sp-icon"></span><span id="sp-tag"></span><span id="sp-title"></span><span id="sp-message"></span></div><span id="kf-preview-text"></span></form><button id="studio-clear-btn" type="button"></button>
+      <div class="gm-actions-grid"></div><div id="godmode-modal" class="hidden"></div><button data-close-modal="godmode" type="button"></button><span id="gm-freeze-label"></span>
+      <button data-action="toggle_freeze" type="button"></button><input id="gm-player-id"><input id="gm-gold"><input id="gm-hp"><input id="gm-kills"><input id="gm-score"><input id="gm-player-name"><input id="gm-pos">
+      <form id="user-edit-form"></form><div id="user-edit-modal" class="hidden"></div><button data-close-modal="user-edit" type="button"></button><input id="ue-user-id"><input id="ue-user-name"><span id="ue-username"></span><span id="ue-id"></span><input id="ue-coins"><input id="ue-xp"><input id="ue-new-password"><button id="ue-delete-btn" type="button"></button>
+      <form id="cosmetic-upload-form"></form><input id="cosmetic-upload-file" type="file"><div id="cosmetic-upload-preview"></div><div class="cosmetic-preview-stage"></div><span id="cosmetic-upload-dimensions"></span><span id="cosmetic-upload-status"></span><input id="cosmetic-upload-id"><input id="cosmetic-upload-name"><select id="cosmetic-upload-type"><option value="skin">skin</option></select><select id="cosmetic-upload-rarity"><option value="common">common</option></select><input id="cosmetic-upload-price"><button id="cosmetic-upload-submit" type="submit"></button><button id="cosmetic-upload-reset" type="button"></button><span id="cosmetic-catalog-count"></span><div id="cosmetics-gallery-grid"></div>
+      <input id="manual-ban-target"><button id="manual-ban-btn" type="button"></button><div id="active-ban-list"></div>
+      <div id="layout-editor-viewport"></div><div class="layout-editor-panel"></div><button id="toggle-layout-fullscreen-btn" type="button"></button><button id="save-layout-btn" type="button"></button><button id="reset-layout-btn" type="button"></button>
+    </div>
+  </main>
+  <script src="/admin.js"></script>
+</body>
+</html>

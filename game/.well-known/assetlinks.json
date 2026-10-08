@@ -1,0 +1,14 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "fun.forestbrawl.twa",
+      "sha256_cert_fingerprints": [
+        "58:61:18:27:B9:D9:07:F2:95:C0:16:EA:83:32:1F:48:AC:16:AB:85:4C:90:04:03:D8:47:AE:8A:A0:DD:2A:3D"
+      ]
+    }
+  }
+]

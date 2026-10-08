@@ -1,0 +1,167 @@
+{
+  "name": "ForestBrawl.io",
+  "short_name": "ForestBrawl",
+  "description": "Ormanda kaynak topla, savunma yapıları kur, düşman oyuncuları alt et ve hayatta kal.",
+  "id": "forestbrawl-io",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#2a7a1a",
+  "theme_color": "#2a7a1a",
+  "icons": [
+    { "src": "originalicon-192.png?v=3", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "originalicon-512.png?v=3", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+  ],
+  "screenshots": [
+    {
+      "src": "asset/game.jpg",
+      "sizes": "1024x1024",
+      "type": "image/jpeg",
+      "label": "ForestBrawl gameplay"
+    }
+  ],
+  "categories": [
+    "game",
+    "survival"
+  ],
+  "assets": [
+    {
+      "name": "asset/tree-forest.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/tree-snow.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/tree-desert.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/tree-swamp.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/tree-darkforest.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/rock-forest.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/rock-snow.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/rock-desert.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/rock-swamp.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/rock-darkforest.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/rock.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/gold.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/apple.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/bush.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/mushroom.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/crystal.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    },
+    {
+      "name": "asset/hive.png",
+      "category": "resource",
+      "width": 256,
+      "height": 256,
+      "pivotX": 128,
+      "pivotY": 128
+    }
+  ]
+}

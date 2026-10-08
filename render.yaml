@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: forestbrawl
+    runtime: node
+    region: frankfurt
+    plan: free
+    dir: .
+    buildCommand: npm ci --include=dev && npm run build:assets
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: OWNER_USERNAME
+        sync: false
+      - key: OWNER_PASSWORD
+        sync: false
+      - key: AUTH_SECRET
+        generateValue: true
